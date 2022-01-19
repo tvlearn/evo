@@ -1,0 +1,14 @@
+__pycache__
+*.pyc
+*~
+*.swp
+*.DS_Store
+*.h5
+*.png
+*.gif
+*.mp4
+*.txt
+*.jpg
+build/*
+evo.egg-info/*
+*.egg
