@@ -6,7 +6,7 @@ ES3C inpainting run on Castle (80% missing; compare [1] for details)
 
 
 ## Requirements
-To run this example, make sure to have completed the installation instructions [described here](/../../README.md) and to have the `evo` environment activated.
+To run this example, make sure to have completed the installation instructions [described here](tvlearn/evo/tree/master/README.md) and to have the `evo` environment activated.
 
 ```bash
 conda activate evo
