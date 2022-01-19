@@ -6,7 +6,7 @@ Bars Test for EBSC for $`H^{gen}=8`$ different bars and $`\pi^{gen}H=2`$ bars on
 
 
 ## Requirements
-To run this example, make sure to have completed the installation instructions [described here](/../../README.md) and to have the `evo` environment activated.
+To run this example, make sure to have completed the installation instructions [described here](../../README.md) and to have the `evo` environment activated.
 
 ```bash
 conda activate evo

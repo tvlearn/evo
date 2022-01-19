@@ -6,7 +6,7 @@ ES3C denoising run on House (σ=50) (compare [1] for details)
 
 
 ## Requirements
-To run this example, make sure to have completed the installation instructions [described here](/../../README.md) and to have the `evo` environment activated.
+To run this example, make sure to have completed the installation instructions [described here](../../README.md) and to have the `evo` environment activated.
 
 ```bash
 conda activate evo
