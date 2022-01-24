@@ -1,6 +1,6 @@
 scipy
 mpi4py
 scikit-image
-matplotlib==2.2.5
+matplotlib
 ffmpeg
 typing
