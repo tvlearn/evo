@@ -71,7 +71,7 @@ class Visualizer(object):
             eps=0.02,
         )
 
-        self._handles["datapoints"] = ax.imshow(np.squeeze(grid))
+        self._handles["datapoints"] = ax.imshow(np.squeeze(grid), interpolation="none")
         ax.axis("off")
 
         self._handles["datapoints"].set_cmap(cmap)
@@ -96,7 +96,7 @@ class Visualizer(object):
         )
 
         if self._handles["W_gen"] is None:
-            self._handles["W_gen"] = ax.imshow(np.squeeze(grid))
+            self._handles["W_gen"] = ax.imshow(np.squeeze(grid), interpolation="none")
             ax.axis("off")
         else:
             self._handles["W_gen"].set_data(np.squeeze(grid))
@@ -122,7 +122,7 @@ class Visualizer(object):
         )
 
         if self._handles["W"] is None:
-            self._handles["W"] = ax.imshow(np.squeeze(grid))
+            self._handles["W"] = ax.imshow(np.squeeze(grid), interpolation="none")
             ax.axis("off")
         else:
             self._handles["W"].set_data(np.squeeze(grid))
@@ -472,7 +472,7 @@ class SSSCVisualizer(Visualizer):
                 marker="o",
                 fillstyle=Line2D.fillStyles[-1],
                 markersize=4,
-                label=r"$\pi_h^{\mathrm{gen}}$",
+                label=r"$\mu_h^{\mathrm{gen}}$",
             )
         else:
             self._handles["mus_gen"].set_xdata(xdata)

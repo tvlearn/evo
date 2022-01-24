@@ -127,7 +127,7 @@ class Visualizer(object):
 
         gfs = grid.transpose(1, 2, 0) if self._isrgb else np.squeeze(grid)
         if self._handles["gfs"] is None:
-            self._handles["gfs"] = ax.imshow(gfs)
+            self._handles["gfs"] = ax.imshow(gfs, interpolation="none")
             ax.axis("off")
         else:
             self._handles["gfs"].set_data(gfs)
