@@ -11,7 +11,6 @@ try:
     def eval_fn(target, reco):
         return compare_psnr(target, reco, 255)
 
-
 except ImportError:
     from skimage.metrics import peak_signal_noise_ratio
 
