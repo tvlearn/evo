@@ -49,7 +49,4 @@ $ pip3 install black[python2] pylama
 
 ## Reference
 
-[1] "Evolutionary Variational Optimization of Generative Models", Jakob Drefs, Enrico Guiraud, Jörg Lücke. Journal of Machine Learning Research, in press, 2022. We will link the paper very soon, see [here](https://arxiv.org/abs/2012.12294) for a preliminary arXiv version.
-
-
-
+[1] Evolutionary Variational Optimization of Generative Models. Jakob Drefs, Enrico Guiraud, Jörg Lücke. _Journal of Machine Learning Research_ 23(21):1-51, 2022. [(online access)](https://www.jmlr.org/papers/v23/20-233.html)
