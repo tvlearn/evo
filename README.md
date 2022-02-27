@@ -35,7 +35,7 @@ Running the examples furthermore requires the `tvutil` package, for which instal
 Finally, you are ready to install `evo`:
 
 ```bash
-$ python setup.py install develop
+$ python setup.py install
 ```
 
 __Remark__:
