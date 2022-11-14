@@ -48,7 +48,7 @@ options:
   --sort_gfs            Whether to visualize learned generative fields according to prior activation (default: False)
 ```
 
-For distributed execution on multiple CPU cores (requires MPI to be installed), run with `mpirun -n <n_proc> python ...`. For example, to run the EBSC example on four cores, run:
+For distributed execution on multiple CPU cores (requires MPI to be installed), run with `mpirun -n <n_proc> python ...`. For example, to use four cores, run:
 
 ```bash
 mpirun -n 4 python main.py
