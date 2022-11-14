@@ -10,7 +10,9 @@ conda activate evo
 
 
 ## Get started
-To start the experiment, run `python main.py`. By default, the example uses randomly extracted image patches from the standard Barbara image as exemplary training data set. To use your own data set, modify the `--data_file` argument accordingly. Further options can be display via:
+To start the experiment, run `python main.py`.
+
+By default, the example uses randomly extracted image patches from the standard Barbara image as exemplary training data set. To use your own data set, modify the `--data_file` argument accordingly. Further options can be display via:
 
 ```bash
 $ python main.py -h           
@@ -49,7 +51,7 @@ options:
 For distributed execution on multiple CPU cores (requires MPI to be installed), run with `mpirun -n <n_proc> python ...`. For example, to run the EBSC example on four cores, run:
 
 ```bash
-mpirun -n 4 python main.py ebsc
+mpirun -n 4 python main.py
 ```
 
 
