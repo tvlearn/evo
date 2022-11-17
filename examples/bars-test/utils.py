@@ -24,7 +24,7 @@ def generate_bars_dict(H, neg_bars=False):
     https://github.com/ml-uol/prosper/blob/master/LICENSE.txt
     """
     R = H // 2
-    D = R ** 2
+    D = R**2
     W_gt = np.zeros((R, R, H))
     for i in range(R):
         W_gt[i, :, i] = 1.0
