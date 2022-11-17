@@ -52,7 +52,7 @@ def _init_lpj_and_state_arrays(N, S, H, p_init_Kn=None, permanent=None):
         else:
             S_perm = 0
     incl = np.zeros((S_perm, H_), dtype=bool)
-    exact_esteps = S == 2 ** H_
+    exact_esteps = S == 2**H_
 
     # compute full state array for potential likelihood evaluations
     if H_ < 12:
@@ -74,7 +74,7 @@ def _init_lpj_and_state_arrays(N, S, H, p_init_Kn=None, permanent=None):
 
         if permanent["background"]:
             ss = np.concatenate((sm, np.ones((ss_size, 1), dtype=bool)), axis=1)
-            lpj = np.empty((N, 2 ** H_))
+            lpj = np.empty((N, 2**H_))
         else:
             incl = np.zeros((S_perm, H_), dtype=bool)
             lpj = np.empty((N, S + S_perm))
