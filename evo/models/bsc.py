@@ -263,7 +263,7 @@ class BSC(Model):
             tracing.tracepoint("M_step:update sigma")
             if incmpl_data:
                 sigma_new = np.sqrt(
-                    (comm.allreduce(my_sigma) + comm.allreduce(my_x_infr.sum()) * sigma ** 2)
+                    (comm.allreduce(my_sigma) + comm.allreduce(my_x_infr.sum()) * sigma**2)
                     / N
                     / D
                 )

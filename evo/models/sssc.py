@@ -59,7 +59,7 @@ class SSSC(Model):
 
         self.s_ids = np.empty(H, dtype=object)
         for h in range(H):
-            self.s_ids[h] = 2 ** h
+            self.s_ids[h] = 2**h
         self.use_storage = use_storage
 
     @tracing.traced
@@ -165,7 +165,7 @@ class SSSC(Model):
                     this_y = my_y[n]
                     this_x_infr = my_x_infr[n]
                     this_y_zm = this_y[this_x_infr] - y_mean[this_x_infr]
-                    tmp[this_x_infr] += this_y_zm ** 2
+                    tmp[this_x_infr] += this_y_zm**2
                     my_cov[np.outer(this_x_infr, this_x_infr)] = np.outer(
                         this_y_zm, this_y_zm
                     ).flatten()
@@ -767,7 +767,7 @@ class SSSC(Model):
             else:
                 WT_outer = np.dot(W_new.T, W_new)
 
-                my_y_outer_diag = (my_y ** 2).sum(axis=0)
+                my_y_outer_diag = (my_y**2).sum(axis=0)
                 y_outer_diag = np.empty((D,))
                 comm.Allreduce([my_y_outer_diag, MPI.DOUBLE], [y_outer_diag, MPI.DOUBLE])
 
