@@ -62,7 +62,33 @@ def get_args():
         help="Number of epochs to train",
     )
 
+    p.add_argument(
+        "--output_directory",
+        type=str,
+        help="Directory to save results (will be defined based on timestamp or SLURM_JOBID if not "
+        "specified)",
+        default=None,
+    )
+
     return p.parse_args()
+
+
+def _set_output_directory(output_directory, comm=MPI.COMM_WORLD):
+    if output_directory is None:
+        timestamp = datetime.datetime.fromtimestamp(time.time()).strftime("%y-%m-%d_%H-%M-%S")
+        output_directory = "./output/{}".format(
+            os.environ["SLURM_JOBID"] if "SLURM_JOBID" in os.environ else timestamp
+        )
+    if not os.path.exists(output_directory) and comm.rank == 0:
+        os.makedirs(output_directory)
+    return output_directory
+
+
+def _set_terminal_logger(output_directory, comm=MPI.COMM_WORLD):
+    txt_file = output_directory + "/terminal.txt"
+    if comm.rank == 0:
+        sys.stdout = stdout_logger(txt_file)
+        print("Will write terminal output to {}".format(txt_file))
 
 
 def _get_images_from_h5(path, comm=MPI.COMM_WORLD):
@@ -82,6 +108,7 @@ def _get_images_from_h5(path, comm=MPI.COMM_WORLD):
 
 
 def run_image_denoising(
+    output_directory,
     noisy_img,
     patch_size,
     model_name,
@@ -103,6 +130,8 @@ def run_image_denoising(
 ):
     """Image Denoising
 
+    :param output_directory: Directory to store results
+    :type output_directory: str
     :param noisy_img: Noisy image array, (height, width) or (height, width, 3) shape expected
     :type noisy_img: np.ndarray
     :param patch_size: Patch size specified as [height, width]
@@ -159,16 +188,9 @@ def run_image_denoising(
         "cross_sparseflip",
     ]
 
-    # define directory to save results
-    timestamp = datetime.datetime.fromtimestamp(time.time()).strftime("%y-%m-%d_%H-%M-%S")
-    output_directory = "./output/{}".format(
-        os.environ["SLURM_JOBID"] if "SLURM_JOBID" in os.environ else timestamp
-    )
-    if not os.path.exists(output_directory) and comm.rank == 0:
-        os.makedirs(output_directory)
-
     # initialize logs
     h5output_file = os.path.join(output_directory, "training.h5")
+    pprint("Will write training output to {}".format(h5output_file))
     dlog = DataLog()
     dlog.set_handler(
         [
@@ -187,12 +209,6 @@ def run_image_denoising(
             for k, v in val_dict.items():
                 dlog.assign(k, v)
 
-    txt_file = output_directory + "/terminal.txt"
-    if comm.rank == 0:
-        sys.stdout = stdout_logger(txt_file)
-    pprint("Running on {} process{}".format(comm.size, "es" if comm.size > 1 else ""))
-    pprint("Will write training output to {}".format(h5output_file))
-    pprint("Will write terminal output to {}".format(txt_file))
     comm.Barrier()
 
     # extract patches from noisy image
@@ -322,8 +338,14 @@ def run_image_denoising(
 
 if __name__ == "__main__":
     comm = MPI.COMM_WORLD
+    pprint("Running on {} process{}".format(comm.size, "es" if comm.size > 1 else ""))
 
     args = get_args()
+
+    output_directory = _set_output_directory(args.output_directory)
+
+    _set_terminal_logger(output_directory)
+
     if comm.rank == 0:
         print("Arguments were specified as follows:")
         print_dict(vars(args))
@@ -331,6 +353,7 @@ if __name__ == "__main__":
     target_img, noisy_img = _get_images_from_h5(args.input_path)
 
     run_image_denoising(
+        output_directory,
         noisy_img,
         args.patch_size,
         args.model,

@@ -30,10 +30,11 @@ def _get_args():
     )
 
     p.add_argument(
-        "rescale",
+        "--rescale",
         type=float,
         help="If specified, the size of the clean image will be rescaled by this factor "
         "(only for demonstration purposes to minimize computational effort)",
+        default=None,
     )
 
     p.add_argument(

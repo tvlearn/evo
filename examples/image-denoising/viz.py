@@ -71,13 +71,25 @@ class Visualizer(object):
         assert "target" in self._axes
         ax = self._axes["target"]
         ax.axis("off")
-        ax.set_title("Target\n")
+        title = "Target"
         if self._target_image is not None:
             target = scale(self._target_image, [0.0, 1.0]) if self._isrgb else self._target_image
             self._handles["target"] = ax.imshow(target)
             self._handles["target"].set_cmap(self._cmap)
+            title += "\n"
         else:
-            plt.text(0.5, 0.5, "n/a")
+            _img = np.ones_like(self._noisy_image)
+            _img[:] = np.nan
+            self._handles["target"] = ax.imshow(_img)
+            ax.text(
+                0.5,
+                0.5,
+                "n/a",
+                horizontalalignment="center",
+                verticalalignment="center",
+                transform=ax.transAxes,
+            )
+        ax.set_title(title)
 
     def _viz_noisy(self):
         assert "noisy" in self._axes
@@ -87,10 +99,12 @@ class Visualizer(object):
         self._handles["noisy"] = ax.imshow(noisy)
         ax.axis("off")
         self._handles["noisy"].set_cmap(self._cmap)
+        title = "Noisy"
         if self._target_image is not None:
             psnr_noisy = compute_psnr(self._target_image, noisy)
-            ax.set_title("Noisy\nPSNR={:.2f})".format(psnr_noisy))
+            title += "\nPSNR={:.2f}".format(psnr_noisy)
             print("psnr of noisy = {:.2f}".format(psnr_noisy))
+        ax.set_title(title)
 
     def _viz_rec(self, epoch, rec):
         assert "rec" in self._axes
@@ -103,9 +117,11 @@ class Visualizer(object):
             self._handles["rec"].set_data(rec)
         self._handles["rec"].set_cmap(self._cmap)
         self._handles["rec"].set_clim(vmin=np.min(rec), vmax=np.max(rec))
+        title = "Reco @ {}".format(epoch)
         if self._target_image is not None:
             psnr = compute_psnr(self._target_image, rec)
-            ax.set_title("Reco @ {}\n(PSNR={:.2f})".format(epoch, psnr))
+            title += "\nPSNR={:.2f}".format(psnr)
+        ax.set_title(title)
 
     def _viz_gfs(self, epoch, gfs, suffix=""):
         assert "gfs" in self._axes
