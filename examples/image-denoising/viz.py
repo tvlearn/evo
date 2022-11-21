@@ -9,7 +9,7 @@ import re
 import glob
 import numpy as np
 from matplotlib.ticker import MaxNLocator
-from utils import eval_fn
+from utils import compute_psnr
 import matplotlib
 
 matplotlib.use("agg")
@@ -20,36 +20,35 @@ from tvutil.viz import make_grid_with_black_boxes_and_white_background, scale  #
 class Visualizer(object):
     def __init__(
         self,
-        viz_every,
         output_directory,
-        clean_image,
         noisy_image,
-        patch_size=None,
-        ncol_gfs=5,
+        patch_size,
+        viz_every,
+        target_image,
+        nrow_gfs=10,
         sort_gfs=True,
         topk_gfs=None,
         cmap=None,
         figsize=[9, 3],
         positions={
-            "clean": [0.001, 0.01, 0.20, 0.85],
+            "target": [0.001, 0.01, 0.20, 0.85],
             "noisy": [0.218, 0.01, 0.20, 0.85],
             "rec": [0.433, 0.01, 0.20, 0.85],
             "gfs": [0.715, 0.37, 0.28, 0.56],
-            "pies": [0.731, 0.18, 0.26, 0.24],
+            "priors": [0.731, 0.17, 0.26, 0.19],
         },
         labelsize=10,
         gif_framerate=None,
     ):
-
-        self._viz_every = viz_every
         self._output_directory = output_directory
+        self._noisy_image = noisy_image
+        self._patch_size = patch_size
+        self._viz_every = viz_every
+        self._target_image = target_image
         self._gif_framerate = gif_framerate
         if gif_framerate is not None and viz_every > 1:
             print("Choose --viz_every=1 for best gif results")
-        self._clean_image = clean_image
-        self._noisy_image = noisy_image
-        self._patch_size = patch_size
-        self._ncol_gfs = ncol_gfs
+        self._nrow_gfs = nrow_gfs
         self._sort_gfs = sort_gfs
         if sort_gfs:
             print(
@@ -57,7 +56,7 @@ class Visualizer(object):
                 "to lowest)"
             )
         self._topk_gfs = topk_gfs
-        self._isrgb = np.ndim(clean_image) == 3
+        self._isrgb = np.ndim(noisy_image) == 3
         self._cmap = (plt.cm.jet if self._isrgb else plt.cm.gray) if cmap is None else cmap
         self._positions = positions
         self._labelsize = labelsize
@@ -65,29 +64,33 @@ class Visualizer(object):
         self._fig = plt.figure(figsize=figsize)
         self._axes = {k: self._fig.add_axes(v, xmargin=0, ymargin=0) for k, v in positions.items()}
         self._handles = {k: None for k in positions}
-        self._viz_clean()
         self._viz_noisy()
+        self._viz_target()
 
-    def _viz_clean(self):
-        assert "clean" in self._axes
-        ax = self._axes["clean"]
-        clean = scale(self._clean_image, [0.0, 1.0]) if self._isrgb else self._clean_image
-        self._handles["clean"] = ax.imshow(clean)
+    def _viz_target(self):
+        assert "target" in self._axes
+        ax = self._axes["target"]
         ax.axis("off")
-        self._handles["clean"].set_cmap(self._cmap)
-        ax.set_title("Clean\n")
+        ax.set_title("Target\n")
+        if self._target_image is not None:
+            target = scale(self._target_image, [0.0, 1.0]) if self._isrgb else self._target_image
+            self._handles["target"] = ax.imshow(target)
+            self._handles["target"].set_cmap(self._cmap)
+        else:
+            plt.text(0.5, 0.5, "n/a")
 
     def _viz_noisy(self):
         assert "noisy" in self._axes
         ax = self._axes["noisy"]
         noisy = self._noisy_image
-        psnr_noisy = eval_fn(self._clean_image, noisy)
-        print("psnr of noisy = {:.2f}".format(psnr_noisy))
         noisy = scale(noisy, [0.0, 1.0]) if self._isrgb else noisy
         self._handles["noisy"] = ax.imshow(noisy)
         ax.axis("off")
         self._handles["noisy"].set_cmap(self._cmap)
-        ax.set_title("Noisy\nPSNR={:.2f})".format(psnr_noisy))
+        if self._target_image is not None:
+            psnr_noisy = compute_psnr(self._target_image, noisy)
+            ax.set_title("Noisy\nPSNR={:.2f})".format(psnr_noisy))
+            print("psnr of noisy = {:.2f}".format(psnr_noisy))
 
     def _viz_rec(self, epoch, rec):
         assert "rec" in self._axes
@@ -100,22 +103,20 @@ class Visualizer(object):
             self._handles["rec"].set_data(rec)
         self._handles["rec"].set_cmap(self._cmap)
         self._handles["rec"].set_clim(vmin=np.min(rec), vmax=np.max(rec))
-        psnr = eval_fn(self._clean_image, rec)
-        ax.set_title("Reco @ {}\n(PSNR={:.2f})".format(epoch, psnr))
+        if self._target_image is not None:
+            psnr = compute_psnr(self._target_image, rec)
+            ax.set_title("Reco @ {}\n(PSNR={:.2f})".format(epoch, psnr))
 
-    def _viz_weights(self, epoch, gfs, suffix=""):
+    def _viz_gfs(self, epoch, gfs, suffix=""):
         assert "gfs" in self._axes
         ax = self._axes["gfs"]
         D, H = gfs.shape
         no_channels = 3 if self._isrgb else 1
-        patch_height, patch_width = (
-            (int(np.sqrt(D / no_channels)), int(np.sqrt(D / no_channels)))
-            if self._patch_size is None
-            else self._patch_size
-        )
+        patch_height, patch_width = self._patch_size
+
         grid, cmap, vmin, vmax, scale_suff = make_grid_with_black_boxes_and_white_background(
             images=gfs.T.reshape(H, no_channels, patch_height, patch_width),
-            nrow=int(np.ceil(H / self._ncol_gfs)),
+            nrow=self._nrow_gfs,
             surrounding=2,
             padding=4,
             repeat=10,
@@ -135,13 +136,13 @@ class Visualizer(object):
         self._handles["gfs"].set_clim(vmin=vmin, vmax=vmax)
         ax.set_title("GFs @ {}".format(epoch) + ("\n" + suffix) if suffix else "")
 
-    def _viz_pies(self, epoch, pies, suffix=""):
-        assert "pies" in self._axes
-        ax = self._axes["pies"]
+    def _viz_priors(self, epoch, pies, suffix=""):
+        assert "priors" in self._axes
+        ax = self._axes["priors"]
         xdata = np.arange(1, len(pies) + 1)
         ydata = pies
-        if self._handles["pies"] is None:
-            (self._handles["pies"],) = ax.plot(
+        if self._handles["priors"] is None:
+            (self._handles["priors"],) = ax.plot(
                 xdata,
                 ydata,
                 "b",
@@ -165,8 +166,8 @@ class Visualizer(object):
                 transform=ax.transAxes,
             )
         else:
-            self._handles["pies"].set_xdata(xdata)
-            self._handles["pies"].set_ydata(ydata)
+            self._handles["priors"].set_xdata(xdata)
+            self._handles["priors"].set_ydata(ydata)
             ax.set_ylabel(r"$\pi_h$ @ {}".format(epoch) + ("\n" + suffix) if suffix else "")
             ax.relim()
             ax.autoscale_view()
@@ -190,8 +191,8 @@ class Visualizer(object):
             if self._topk_gfs
             else ("sorted" if self._sort_gfs else "")
         )
-        self._viz_weights(epoch, theta["W"].copy()[:, inds_sort_gfs], suffix_gfs)
-        self._viz_pies(epoch, theta["pies"][inds_sort], "(sorted)" if self._sort_gfs else "")
+        self._viz_gfs(epoch, theta["W"].copy()[:, inds_sort_gfs], suffix_gfs)
+        self._viz_priors(epoch, theta["pies"][inds_sort], "(sorted)" if self._sort_gfs else "")
 
     def process_epoch(self, epoch, theta, rec):
         if epoch == 1 or epoch % self._viz_every == 0:
