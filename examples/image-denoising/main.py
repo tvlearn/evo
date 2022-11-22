@@ -123,7 +123,7 @@ def run_image_denoising(
     bitflip_prob=None,
     save_theta_all_epochs=False,
     target_img=None,
-    eval_fn=compute_psnr,
+    eval_method=("psnr", compute_psnr),
     viz_every=1,
     gif_framerate=None,
     comm=MPI.COMM_WORLD,
@@ -163,8 +163,9 @@ def run_image_denoising(
     :type save_theta_all_epochs: bool
     :param target_img: Target image array (only used for evaluation, i.e., PSNR calculation)
     :type target_img: np.ndarray
-    :param eval_fn: Method to evaluate performance (e.g., method to calculate PSNR)
-    :type eval_fn: Callable
+    :param eval_method: Evaluation method for image reconstruction (e.g., PSNR function), passed \
+                        as (function name, callable) tuple
+    :type eval_method: Tuple[str, Callable]
     :param viz_every: Create visualizations every X'th epoch
     :type viz_every: int
     :param gif_framerate: If specified, the training output will be additionally saved as animated \
@@ -187,6 +188,8 @@ def run_image_denoising(
         "cross_randflip",
         "cross_sparseflip",
     ]
+    assert isinstance(eval_method[0], str) if eval_method is not None else True
+    assert callable(eval_method[1]) if eval_method is not None else True
 
     # initialize logs
     h5output_file = os.path.join(output_directory, "training.h5")
@@ -200,6 +203,10 @@ def run_image_denoising(
         h5output_file,
         warnings=False,
     )
+    dlog.assign("noisy", noisy_img)
+    dlog.assign("patch_size", np.asarray(patch_size))
+    if target_img is not None:
+        dlog.assign("target", target_img)
     dlog.set_handler(["F", "psnr"], TextPrinter)
     if save_theta_all_epochs:
         theta_log_fn = dlog.append_all
@@ -258,10 +265,10 @@ def run_image_denoising(
             output_directory=output_directory,
             noisy_image=noisy_img,
             patch_size=patch_size,
-            viz_every=viz_every,
-            target_image=target_img,
-            gif_framerate=gif_framerate,
             topk_gfs=np.min([50, H]),
+            target_image=target_img,
+            eval_method=eval_method,
+            gif_framerate=gif_framerate,
         )
         if comm.rank == 0
         else None
@@ -314,12 +321,15 @@ def run_image_denoising(
             reco_img = ovp.set_and_merge(Y_rec_T)
             dlog.append("reco", reco_img)
             if target_img is not None:
-                psnr = compute_psnr(target_img, reco_img)
-                dlog.append("psnr", psnr)
+                eval_name, eval_fn = eval_method
+                eval_result = eval_fn(target_img, reco_img)
+                dlog.append(eval_name, eval_result)
 
         # visualize
-        if comm.rank == 0:
-            visualizer.process_epoch(epoch=e + 1, theta=theta, rec=reco_img)
+        if (e == 1 or e % viz_every == 0) and comm.rank == 0:
+            visualizer.process_epoch(
+                epoch=e + 1, priors=theta["pies"], gfs=theta["W"], rec=reco_img
+            )
         comm.Barrier()
 
         pprint("\tTotal epoch runtime : %.2f s" % (time.time() - start))

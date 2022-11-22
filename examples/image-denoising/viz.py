@@ -7,14 +7,29 @@ from __future__ import division, print_function
 import os
 import re
 import glob
+import argparse
 import numpy as np
 from matplotlib.ticker import MaxNLocator
-from utils import compute_psnr
 import matplotlib
 
 matplotlib.use("agg")
 import matplotlib.pyplot as plt  # noqa
 from tvutil.viz import make_grid_with_black_boxes_and_white_background, scale  # noqa
+
+
+def _get_args():
+    p = argparse.ArgumentParser(
+        description="Visualize results",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    p.add_argument("results_file", type=str, help="Path to H5 file with training output")
+    p.add_argument(
+        "--output_directory",
+        type=str,
+        help="Directory to write PNG file to (defaults " "to results file directory)",
+    )
+    return p.parse_args()
 
 
 class Visualizer(object):
@@ -23,9 +38,6 @@ class Visualizer(object):
         output_directory,
         noisy_image,
         patch_size,
-        viz_every,
-        target_image,
-        nrow_gfs=10,
         sort_gfs=True,
         topk_gfs=None,
         cmap=None,
@@ -38,17 +50,15 @@ class Visualizer(object):
             "priors": [0.731, 0.17, 0.26, 0.19],
         },
         labelsize=10,
+        target_image=None,
+        eval_method=None,
+        eval_name=None,
         gif_framerate=None,
     ):
         self._output_directory = output_directory
         self._noisy_image = noisy_image
         self._patch_size = patch_size
-        self._viz_every = viz_every
-        self._target_image = target_image
-        self._gif_framerate = gif_framerate
-        if gif_framerate is not None and viz_every > 1:
-            print("Choose --viz_every=1 for best gif results")
-        self._nrow_gfs = nrow_gfs
+        self._nrow_gfs = 10
         self._sort_gfs = sort_gfs
         if sort_gfs:
             print(
@@ -60,6 +70,10 @@ class Visualizer(object):
         self._cmap = (plt.cm.jet if self._isrgb else plt.cm.gray) if cmap is None else cmap
         self._positions = positions
         self._labelsize = labelsize
+        self._target_image = target_image
+        self._eval_name = eval_method[0]
+        self._eval_fn = eval_method[1]
+        self._gif_framerate = gif_framerate
 
         self._fig = plt.figure(figsize=figsize)
         self._axes = {k: self._fig.add_axes(v, xmargin=0, ymargin=0) for k, v in positions.items()}
@@ -101,9 +115,8 @@ class Visualizer(object):
         self._handles["noisy"].set_cmap(self._cmap)
         title = "Noisy"
         if self._target_image is not None:
-            psnr_noisy = compute_psnr(self._target_image, noisy)
-            title += "\nPSNR={:.2f}".format(psnr_noisy)
-            print("psnr of noisy = {:.2f}".format(psnr_noisy))
+            eval_result = self._eval_fn(self._target_image, noisy)
+            title += "\n{}={:.2f}".format(self._eval_name.upper(), eval_result)
         ax.set_title(title)
 
     def _viz_rec(self, epoch, rec):
@@ -119,8 +132,8 @@ class Visualizer(object):
         self._handles["rec"].set_clim(vmin=np.min(rec), vmax=np.max(rec))
         title = "Reco @ {}".format(epoch)
         if self._target_image is not None:
-            psnr = compute_psnr(self._target_image, rec)
-            title += "\nPSNR={:.2f}".format(psnr)
+            eval_result = self._eval_fn(self._target_image, rec)
+            title += "\n{}={:.2f}".format(self._eval_name.upper(), eval_result)
         ax.set_title(title)
 
     def _viz_gfs(self, epoch, gfs, suffix=""):
@@ -191,10 +204,8 @@ class Visualizer(object):
                 r"$\sum_h \pi_h$ = " + "{:.2f}".format(pies.sum())
             )
 
-    def viz_epoch(self, epoch, theta, rec):
-        inds_sort = (
-            np.argsort(theta["pies"])[::-1] if self._sort_gfs else np.arange(len(theta["pies"]))
-        )
+    def viz_epoch(self, epoch, priors, gfs, rec):
+        inds_sort = np.argsort(priors)[::-1] if self._sort_gfs else np.arange(len(priors))
         inds_sort_gfs = inds_sort[: self._topk_gfs] if self._topk_gfs is not None else inds_sort
         if rec is not None:
             self._viz_rec(epoch, rec)
@@ -207,14 +218,13 @@ class Visualizer(object):
             if self._topk_gfs
             else ("sorted" if self._sort_gfs else "")
         )
-        self._viz_gfs(epoch, theta["W"].copy()[:, inds_sort_gfs], suffix_gfs)
-        self._viz_priors(epoch, theta["pies"][inds_sort], "(sorted)" if self._sort_gfs else "")
+        self._viz_gfs(epoch, gfs.copy()[:, inds_sort_gfs], suffix_gfs)
+        self._viz_priors(epoch, priors[inds_sort], "(sorted)" if self._sort_gfs else "")
 
-    def process_epoch(self, epoch, theta, rec):
-        if epoch == 1 or epoch % self._viz_every == 0:
-            assert rec is not None
-            self.viz_epoch(epoch, theta, rec)
-            self.save_epoch(epoch)
+    def process_epoch(self, epoch, priors, gfs, rec):
+        assert rec is not None
+        self.viz_epoch(epoch, priors, gfs, rec)
+        self.save_epoch(epoch)
 
     def save_epoch(self, epoch):
         output_directory = self._output_directory
@@ -266,3 +276,49 @@ class Visualizer(object):
         plt.close()
         if self._gif_framerate is not None:
             self._write_gif(framerate=self._gif_framerate)
+
+
+def _load_last_and_viz(
+    output_directory,
+    noisy_image,
+    patch_size,
+    ind_epoch,
+    priors,
+    gfs,
+    reco_image,
+    target_image=None,
+    eval_method=None,
+):
+    H = gfs.shape[1]
+    visualizer = Visualizer(
+        output_directory=output_directory,
+        noisy_image=noisy_image,
+        patch_size=patch_size,
+        topk_gfs=np.min([50, H]),
+        target_image=target_image,
+        eval_method=eval_method,
+    )
+    visualizer.process_epoch(epoch=ind_epoch + 1, priors=priors, gfs=gfs, rec=reco_image)
+    visualizer.finalize()
+
+
+if __name__ == "__main__":
+    import h5py
+    from utils import compute_psnr
+
+    args = _get_args()
+
+    with h5py.File(args.results_file, "r") as f:
+        _load_last_and_viz(
+            output_directory=args.output_directory
+            if args.output_directory is not None
+            else os.path.split(args.results_file)[0],
+            noisy_image=f["noisy"][...],
+            patch_size=f["patch_size"][...],
+            ind_epoch=len(f["F"]) - 1,
+            priors=f["pies"][...],
+            gfs=f["W"][...],
+            reco_image=f["reco"][-1],
+            target_image=f["target"][...],
+            eval_method=("psnr", compute_psnr),
+        )

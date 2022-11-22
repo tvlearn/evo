@@ -1,18 +1,11 @@
 # -*- coding: utf-8 -*-
 
 import sys
+from skimage.metrics import peak_signal_noise_ratio
 
-try:
-    from skimage.measure import compare_psnr
 
-    def compute_psnr(target, reco):
-        return compare_psnr(target, reco, 255)
-
-except ImportError:
-    from skimage.metrics import peak_signal_noise_ratio
-
-    def compute_psnr(target, reco):
-        return peak_signal_noise_ratio(target, reco, data_range=255)
+def compute_psnr(target, reco):
+    return peak_signal_noise_ratio(target, reco, data_range=255)
 
 
 class stdout_logger(object):
