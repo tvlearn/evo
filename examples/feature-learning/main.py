@@ -96,7 +96,7 @@ if __name__ == "__main__":
 
     # distribute data to MPI processes
     pprint("Scattering data to processes")
-    my_y = scatter_to_processes(Y)[0]
+    my_y = scatter_to_processes(Y)
     my_N = my_y.shape[0]
     my_data = {"y": my_y, "x_infr": np.logical_not(np.isnan(my_y))}
     comm.Barrier()

@@ -102,7 +102,7 @@ if __name__ == "__main__":
 
     # distribute data to MPI processes
     pprint("Scattering data to processes")
-    my_y, split_sizes, displacements = scatter_to_processes(Y)
+    my_y = scatter_to_processes(Y)
     my_N = my_y.shape[0]
     my_data = {
         "y": my_y,  # local dataset
@@ -171,11 +171,7 @@ if __name__ == "__main__":
         # merge reconstructed image patches and generate reconstructed image
         gather = e == 0 or (e + 1) % merge_every == 0
         assert "y_reconstructed" in my_data if gather else True
-        Y_rec_T = (
-            gather_from_processes(my_data["y_reconstructed"], split_sizes, displacements).T
-            if gather
-            else None
-        )
+        Y_rec_T = gather_from_processes(my_data["y_reconstructed"]).T if gather else None
         merge = gather and comm.rank == 0
         imgs = {
             k: ovp.set_and_merge(Y_rec_T, merge_method=v) if merge else None

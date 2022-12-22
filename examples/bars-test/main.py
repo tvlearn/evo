@@ -79,9 +79,9 @@ if __name__ == "__main__":
         else {
             "W": args.bar_amp * generate_bars_dict(args.H, neg_bars=args.neg_bars),
             "pies": np.ones(args.H) * pi_gen,
-            "sigma2": np.array(args.sigma_gen ** 2),
+            "sigma2": np.array(args.sigma_gen**2),
             "mus": np.ones(args.H) * args.mu_gen,
-            "Psi": np.eye(args.H) * args.psi_gen ** 2,
+            "Psi": np.eye(args.H) * args.psi_gen**2,
         }
     )
     comm.Barrier()
@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
     # distribute data to MPI processes
     pprint("Scattering data to processes")
-    my_y = scatter_to_processes(Y)[0]
+    my_y = scatter_to_processes(Y)
     my_N = my_y.shape[0]
     my_data = {"y": my_y, "x_infr": np.logical_not(np.isnan(my_y))}
     comm.Barrier()
