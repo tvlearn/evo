@@ -20,6 +20,7 @@ class SSSC(Model):
         D,
         H,
         S,
+        sigma2_type="scalar",
         use_storage=True,
         precision=np.float64,
         to_learn=["W", "pies", "mus", "sigma2", "Psi"],
@@ -48,14 +49,19 @@ class SSSC(Model):
         self.eps_sigma2 = tol
         self.dtype_precision = precision
 
+        self.sigma2_type = sigma2_type
+
         self.noise_policy = {
             "W": (-np.inf, +np.inf, False, None),
             "pies": (tol, 1.0 - tol, False, None),
             "mus": (-np.inf, +np.inf, False, None),
             "Psi": (-np.inf, +np.inf, False, tol),
         }
-
-        self.noise_policy["sigma2"] = (tol, +np.inf, False, None)
+        self.noise_policy["sigma2"] = (
+            (tol, +np.inf, False, None)
+            if sigma2_type in ("scalar", "diagonal")
+            else (-np.inf, +np.inf, False, tol)
+        )
 
         self.s_ids = np.empty(H, dtype=object)
         for h in range(H):
@@ -81,7 +87,12 @@ class SSSC(Model):
         y_mean = np.zeros((my_N, D))
         z = np.zeros((my_N, H_gen))
 
-        sigma = np.sqrt(model_params["sigma2"]) * np.ones(D)
+        if self.sigma2_type == "full":
+            sigma = np.sqrt(model_params["sigma2"].diagonal())
+        elif self.sigma2_type == "diagonal":
+            sigma = np.sqrt(model_params["sigma2"])
+        else:  # 'scalar'
+            sigma = np.sqrt(model_params["sigma2"]) * np.ones(D)
 
         for n in range(my_N):
 
@@ -117,6 +128,7 @@ class SSSC(Model):
         my_N, D = my_y.shape
         N = comm.allreduce(my_N)
         incmpl_data = not my_x_infr.all()
+        sigma2_type = self.sigma2_type
 
         model_params = {}
 
@@ -171,11 +183,16 @@ class SSSC(Model):
                     ).flatten()
                 my_cov = comm.allreduce(my_cov) / N
 
-            model_params["sigma2"] = (
-                comm.allreduce(tmp.sum() / my_x_infr.flatten().sum()) + 0.001
-                if incmpl_data
-                else np.mean(np.diag(my_cov)) + 0.001
-            )
+            if sigma2_type == "full":
+                model_params["sigma2"] = comm.bcast(my_cov + (0.001 * np.eye(D)))
+            elif sigma2_type == "diagonal":
+                model_params["sigma2"] = np.diag(my_cov) + 0.001
+            else:
+                model_params["sigma2"] = (
+                    comm.allreduce(tmp.sum() / my_x_infr.flatten().sum()) + 0.001
+                    if incmpl_data
+                    else np.mean(np.diag(my_cov)) + 0.001
+                )
 
         else:
             model_params["sigma2"] = sigma_init
@@ -187,7 +204,12 @@ class SSSC(Model):
             if W_init == "normal":
                 model_params["W"] = comm.bcast(np.random.normal(0, 5, [D, H]))
             else:
-                noise = np.sqrt(model_params["sigma2"]) / 4.0
+                noise = (
+                    np.sqrt(model_params["sigma2"]) / 4.0
+                    if sigma2_type == "scalar"
+                    else np.sqrt(comm.allreduce(tmp.sum() / my_x_infr.flatten().sum()) + 0.001)
+                    / 4.0
+                )
                 model_params["W"] = y_mean[:, None] + np.random.normal(
                     scale=noise, size=[D, H]
                 )  # shape: (H, D)
@@ -206,6 +228,8 @@ class SSSC(Model):
         at: https://github.com/ml-uol/prosper/blob/master/LICENSE.txt
         """
         comm = self.comm
+        sigma2_type = self.sigma2_type
+        D = self.D
 
         model_params = Model.check_params(self, model_params)
 
@@ -219,13 +243,22 @@ class SSSC(Model):
 
             assert np.isfinite(model_params["Psi"]).all()
 
-            assert np.isfinite(model_params["sigma2"])
-            assert model_params["sigma2"] > 0
+            if sigma2_type == "full":
+                assert np.isfinite(model_params["sigma2"]).all()  # check sigma2
+                assert np.sum(model_params["sigma2"][range(D), range(D)] <= 0) == 0
+            elif sigma2_type == "diagonal":
+                assert np.isfinite(model_params["sigma2"]).all()  # check sigma2
+                assert np.sum(model_params["sigma2"] <= 0) == 0
+            else:  # 'scalar'
+                assert np.isfinite(model_params["sigma2"])  # check sigma2
+                assert model_params["sigma2"] > 0
 
         return model_params
 
     @tracing.traced
     def log_pseudo_joint_permanent_states(self, model_params, my_suff_stat, my_data):
+        sigma2_type = self.sigma2_type
+
         this_y = my_data["this_y"]
         this_x_infr = my_data["this_x_infr"]
         sigma2_inv = model_params["sigma2_inv"]
@@ -237,13 +270,25 @@ class SSSC(Model):
 
         # all-zero state
         if permanent["allzero"]:
-            lpj[0] = -0.5 * (this_y[this_x_infr] ** 2).sum() * sigma2_inv
+            if sigma2_type == "full":
+                lpj[0] = (
+                    -0.5
+                    * (
+                        this_y[this_x_infr]
+                        * np.dot(sigma2_inv[this_x_infr, :][:, this_x_infr], this_y[this_x_infr])
+                    ).sum()
+                )
+            elif sigma2_type == "diagonal":
+                lpj[0] = -0.5 * (this_y[this_x_infr] ** 2 * sigma2_inv[this_x_infr]).sum()
+            elif sigma2_type == "scalar":
+                lpj[0] = -0.5 * (this_y[this_x_infr] ** 2).sum() * sigma2_inv
 
         return self.lpj_reset_check(lpj, my_suff_stat)
 
     @tracing.traced
     def log_pseudo_joint(self, model_params, my_suff_stat, my_data):
         s_ids = self.s_ids
+        sigma2_type = self.sigma2_type
 
         this_y = my_data["this_y"]
         this_x_infr = my_data["this_x_infr"]
@@ -288,14 +333,17 @@ class SSSC(Model):
                 log_det_Psi_s = np.linalg.slogdet(Psi_s)[1]  # is scalar
                 W_s_mus_s = np.dot(W_s, mus_s)  # is (D_obs,)
 
-                sigma2_inv_W_s = sigma2_inv * W_s
+                if sigma2_type == "full":
+                    sigma2_inv_W_s = np.dot(sigma2_inv[this_x_infr, :][:, this_x_infr], W_s)
+                elif sigma2_type == "diagonal":
+                    sigma2_inv_W_s = sigma2_inv[this_x_infr][:, None] * W_s
+                elif sigma2_type == "scalar":
+                    sigma2_inv_W_s = sigma2_inv * W_s
 
                 M_s = (
                     np.dot(W_s.T, sigma2_inv_W_s) + Psi_s_inv
                 )  # cf. eq. 19 in Sheikh et al., 2014, JMLR; eq. 2.19 in Sheikh, Dissertation,
                 # 2017
-                log_det_M_s = np.linalg.slogdet(M_s)[1]
-
                 try:
                     lambda_s = np.linalg.inv(
                         M_s
@@ -303,14 +351,27 @@ class SSSC(Model):
                 except np.linalg.linalg.LinAlgError:
                     lambda_s = np.linalg.pinv(M_s)
                     # print("log_pseudo_joint: Taking pinv for lambda_s")
-
-                lambda_s_W_s_sigma2_inv = np.dot(lambda_s, W_s.T) * sigma2_inv
-
+                log_det_M_s = np.linalg.slogdet(M_s)[1]
                 C_det = log_det_M_s + log_det_Psi_s
 
-                C_inv = -np.dot(sigma2_inv_W_s, lambda_s_W_s_sigma2_inv) + sigma2_inv * np.eye(
-                    this_x_infr.sum()
-                )
+                if sigma2_type == "full":  # in eq 19 SheikhEtAl2014
+                    lambda_s_W_s_sigma2_inv = np.dot(
+                        np.dot(lambda_s, W_s.T), sigma2_inv
+                    )  # is (|state|, D_obs)
+                    C_inv = (
+                        -np.dot(sigma2_inv_W_s, lambda_s_W_s_sigma2_inv)
+                        + sigma2_inv[this_x_infr, :][:, this_x_infr]
+                    )  # is (D_obs, D_obs)
+                elif sigma2_type == "diagonal":
+                    lambda_s_W_s_sigma2_inv = np.dot(lambda_s, W_s.T) * sigma2_inv[None, :]
+                    C_inv = -np.dot(sigma2_inv_W_s, lambda_s_W_s_sigma2_inv) + np.diag(
+                        sigma2_inv[this_x_infr]
+                    )
+                elif sigma2_type == "scalar":
+                    lambda_s_W_s_sigma2_inv = np.dot(lambda_s, W_s.T) * sigma2_inv
+                    C_inv = -np.dot(sigma2_inv_W_s, lambda_s_W_s_sigma2_inv) + sigma2_inv * np.eye(
+                        this_x_infr.sum()
+                    )
 
                 storage["storagekeys"] += (this_s_id,)
                 storage[np.str(this_s_id)] = {
@@ -333,6 +394,7 @@ class SSSC(Model):
     def E_step_precompute(self, model_params, my_suff_stat, my_data):
         comm = self.comm
         D = self.D
+        sigma2_type = self.sigma2_type
         dtype_precision = self.dtype_precision
         pies = model_params["pies"]
         sigma2 = model_params["sigma2"]
@@ -345,15 +407,35 @@ class SSSC(Model):
         model_params["piH"] = pies.sum()
         model_params["pil_bar"] = np.log(pies / (1.0 - pies))
 
-        sigma2_float128 = sigma2.astype("longdouble")
-        try:
-            model_params["sigma2_inv"] = (1.0 / sigma2_float128).astype(
-                dtype_precision
-            )  # is scalar
-            log_det_sigma2 = D * np.log(sigma2_float128).astype(dtype_precision)
-        except Exception:
-            model_params["sigma2_inv"] = 1.0 / sigma2  # is scalar
-            log_det_sigma2 = D * np.log(sigma2)
+        if sigma2_type == "full":
+            try:
+                model_params["sigma2_inv"] = np.linalg.inv(sigma2.astype(np.float64)).astype(
+                    dtype_precision
+                )  # is (D,D)
+                log_det_sigma2 = np.linalg.slogdet(sigma2.astype(np.float64))[1].astype(
+                    dtype_precision
+                )
+            except np.linalg.linalg.LinAlgError:
+                model_params["sigma2_inv"] = np.linalg.inv(sigma2)  # is (D,D)
+                log_det_sigma2 = np.linalg.slogdet(sigma2)[1]
+        elif sigma2_type == "diagonal":
+            try:
+                model_params["sigma2_inv"] = (1.0 / sigma2.astype(np.float64)).astype(
+                    dtype_precision
+                )  # is (D,)
+                log_det_sigma2 = np.log(np.prod(sigma2.astype(np.float64))).astype(dtype_precision)
+            except Exception:
+                model_params["sigma2_inv"] = 1.0 / sigma2  # is (D,)
+                log_det_sigma2 = np.log(np.prod(sigma2))
+        else:  # 'scalar'
+            try:
+                model_params["sigma2_inv"] = (1.0 / sigma2.astype("longdouble")).astype(
+                    dtype_precision
+                )  # is scalar
+                log_det_sigma2 = D * np.log(sigma2.astype("longdouble")).astype(dtype_precision)
+            except Exception:
+                model_params["sigma2_inv"] = 1.0 / sigma2  # is scalar
+                log_det_sigma2 = D * np.log(sigma2)
         model_params["ljc"] -= 0.5 * log_det_sigma2
 
         # Check missing-data case
@@ -450,6 +532,7 @@ class SSSC(Model):
         B_max = self.B_max
         B_max_shft = self.B_max_shft
         dtype_precision = self.dtype_precision
+        sigma2_type = self.sigma2_type
         eps_pjc_sum = self.eps_pjc_sum
         eps_W = self.eps_W
         eps_pies = self.eps_pies
@@ -750,31 +833,41 @@ class SSSC(Model):
 
         # Calculate updated sigma
         if "sigma2" in self.to_learn:
-            tracing.tracepoint("M_step:update sigma sq")
+            tracing.tracepoint("M_step:update sigma2")
+            if sigma2_type == "full":
+                sigma2_new = np.zeros((D, D))
+                my_y_outer = np.dot(my_y.T, my_y)
+                y_outer = np.empty((D, D))
+                comm.Allreduce([my_y_outer, MPI.DOUBLE], [y_outer, MPI.DOUBLE])
+                sigma2_new += y_outer
+                sigma2_new -= np.dot(W_new, np.dot(sum_xpt_sz_sz_outer, W_new.T))
+                sigma2_new = (sigma2_new / N) + (eps_sigma2 * np.eye(self.D))
 
-            sigma2_new = 0.0
-
-            if incmpl_data:
-
-                my_y_inner = (my_y[my_x_infr] ** 2).sum()
-
-                sigma2_new += comm.allreduce(my_y_inner) - np.trace(sum_W_xpt_sz_sz_W)
-
-                correction = comm.allreduce(my_x_infr.sum()) * sigma2
-
-                sigma2_new = ((sigma2_new + correction) / N / D) + eps_sigma2
-
-            else:
-                WT_outer = np.dot(W_new.T, W_new)
-
+            elif sigma2_type == "diagonal":
+                sigma2_new = np.zeros(D)
                 my_y_outer_diag = (my_y**2).sum(axis=0)
                 y_outer_diag = np.empty((D,))
                 comm.Allreduce([my_y_outer_diag, MPI.DOUBLE], [y_outer_diag, MPI.DOUBLE])
+                sigma2_new += y_outer_diag
+                sigma2_new -= np.diag(np.dot(W_new, np.dot(sum_xpt_sz_sz_outer, W_new.T)))
+                sigma2_new = sigma2_new / N + eps_sigma2
 
-                sigma2_new += y_outer_diag.sum()
-                sigma2_new -= np.trace(np.dot(sum_xpt_sz_sz_outer, WT_outer))
+            elif sigma2_type == "scalar":
+                sigma2_new = 0.0
+                if incmpl_data:
+                    my_y_inner = (my_y[my_x_infr] ** 2).sum()
+                    sigma2_new += comm.allreduce(my_y_inner) - np.trace(sum_W_xpt_sz_sz_W)
+                    correction = comm.allreduce(my_x_infr.sum()) * sigma2
+                    sigma2_new = ((sigma2_new + correction) / N / D) + eps_sigma2
+                else:
+                    WT_outer = np.dot(W_new.T, W_new)
+                    my_y_outer_diag = (my_y**2).sum(axis=0)
+                    y_outer_diag = np.empty((D,))
+                    comm.Allreduce([my_y_outer_diag, MPI.DOUBLE], [y_outer_diag, MPI.DOUBLE])
+                    sigma2_new += y_outer_diag.sum()
+                    sigma2_new -= np.trace(np.dot(sum_xpt_sz_sz_outer, WT_outer))
+                    sigma2_new = (sigma2_new / N / D) + eps_sigma2
 
-                sigma2_new = (sigma2_new / N / D) + eps_sigma2
         else:
             sigma2_new = None
 
