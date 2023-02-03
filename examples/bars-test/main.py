@@ -62,9 +62,10 @@ if __name__ == "__main__":
     comm.Barrier()
 
     # instantiate model
-    D = (args.H / 2) ** 2
+    D = int((args.H / 2) ** 2)
     MODEL = {"ebsc": BSC, "es3c": SSSC}[args.algo]
-    model = MODEL(D, args.H, args.Ksize)
+    model_kwargs = {"sigma2_type": args.sigma2_type} if args.algo == "es3c" else {}
+    model = MODEL(D, args.H, args.Ksize, **model_kwargs)
 
     # generate data
     pprint("Generating data")
@@ -79,16 +80,20 @@ if __name__ == "__main__":
         else {
             "W": args.bar_amp * generate_bars_dict(args.H, neg_bars=args.neg_bars),
             "pies": np.ones(args.H) * pi_gen,
-            "sigma2": np.array(args.sigma_gen**2),
+            "sigma2": {
+                "full": args.sigma_gen**2 * np.diag(np.ones(D)),
+                "diagonal": args.sigma_gen**2 * np.ones(D),
+                "scalar": np.array(args.sigma_gen**2),
+            }[args.sigma2_type],
             "mus": np.ones(args.H) * args.mu_gen,
             "Psi": np.eye(args.H) * args.psi_gen**2,
         }
     )
+    theta_gen = model.check_params(theta_gen)
     comm.Barrier()
     dlog.append("model", args.algo.upper())
     dlog.append_all({"{}_gen".format(k): v for k, v in theta_gen.items()})
     data = model.generate_data(theta_gen, args.no_data_points) if comm.rank == 0 else None
-    theta_gen = model.check_params(theta_gen)
     Y = data["y"] if comm.rank == 0 else None
     dlog.append("Y", Y)
     comm.Barrier()
@@ -97,7 +102,11 @@ if __name__ == "__main__":
     pprint("Scattering data to processes")
     my_y = scatter_to_processes(Y)
     my_N = my_y.shape[0]
-    my_data = {"y": my_y, "x_infr": np.logical_not(np.isnan(my_y))}
+    my_data = {
+        "y": my_y,
+        "x_infr": np.logical_not(np.isnan(my_y)),
+        "x": np.zeros_like(my_y),  # not x will be reconstructed
+    }
     comm.Barrier()
 
     # initialize model and variational states
@@ -136,6 +145,7 @@ if __name__ == "__main__":
 
     # initialize visualizer
     pprint("Initializing visualizer")
+    inds_n_show = np.arange(15)
     Visualizer = (
         {"ebsc": BSCVisualizer, "es3c": SSSCVisualizer}[args.algo] if comm.rank == 0 else None
     )
@@ -143,10 +153,12 @@ if __name__ == "__main__":
         Visualizer(
             viz_every=args.viz_every if args.viz_every is not None else args.no_epochs,
             output_directory=output_directory,
-            datapoints=Y[:15],
+            datapoints=Y[inds_n_show],
             theta_gen=theta_gen,
             L_gen=L_gen,
             gif_framerate=args.gif_framerate,
+            will_receive_data_reconstructions=args.data_estimation,
+            **{"sigma2_type": args.sigma2_type} if args.algo == "es3c" else {},
         )
         if comm.rank == 0
         else None
@@ -158,13 +170,20 @@ if __name__ == "__main__":
         # run training epoch
         dlog.progress("Epoch {} of {}".format(e + 1, args.no_epochs))
         start = time.time()
-        F, S_nunique, S_sub, theta = model.step(theta, my_suff_stat, my_data)
+        F, S_nunique, S_sub, theta = model.step(
+            theta, my_suff_stat, my_data, do_reconstruction=args.data_estimation
+        )
         dlog.append_all(merge_dict({"F": F, "S_nunique": S_nunique, "S_sub": S_sub}, theta))
         pprint("\tTotal epoch runtime : %.2f s" % (time.time() - start))
 
         # visualize
         if comm.rank == 0:
-            visualizer.process_epoch(epoch=e + 1, F=F, theta=theta)
+            visualizer.process_epoch(
+                epoch=e + 1,
+                F=F,
+                theta=theta,
+                **{"reco": my_data["y_reconstructed"][inds_n_show]} if args.data_estimation else {},
+            )
 
     comm.Barrier()
 
