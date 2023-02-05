@@ -271,9 +271,9 @@ class SSSC(Model):
             storage["counts_norm"] += 1
 
             if this_s_id in storage["storagekeys"]:
-                W_s_mus_s = storage[np.str(this_s_id)]["W_s_mus_s"]
-                C_det = storage[np.str(this_s_id)]["C_det"]
-                C_inv = storage[np.str(this_s_id)]["C_inv"]
+                W_s_mus_s = storage[str(this_s_id)]["W_s_mus_s"]
+                C_det = storage[str(this_s_id)]["C_det"]
+                C_inv = storage[str(this_s_id)]["C_inv"]
                 storage["counts"] += 1
             else:
 
@@ -313,7 +313,7 @@ class SSSC(Model):
                 )
 
                 storage["storagekeys"] += (this_s_id,)
-                storage[np.str(this_s_id)] = {
+                storage[str(this_s_id)] = {
                     "W_s_mus_s": W_s_mus_s,
                     "C_det": C_det,
                     "C_inv": C_inv,
@@ -396,8 +396,8 @@ class SSSC(Model):
 
             mus_s = mus[this_ss_s]  # is (|this_ss_s|,)
 
-            W_s_mus_s = storage[np.str(this_s_id)]["W_s_mus_s"]
-            lambda_s_W_s_sigma2_inv = storage[np.str(this_s_id)]["lambda_s_W_s_sigma2_inv"]
+            W_s_mus_s = storage[str(this_s_id)]["W_s_mus_s"]
+            lambda_s_W_s_sigma2_inv = storage[str(this_s_id)]["lambda_s_W_s_sigma2_inv"]
 
             this_y_norm = this_y[this_x_infr] - W_s_mus_s  # is (D,)
 
@@ -570,9 +570,9 @@ class SSSC(Model):
 
                 mus_s = mus[this_state]  # is (|this_state|,)
 
-                W_s_mus_s = storage[np.str(this_s_id)]["W_s_mus_s"]
-                lambda_s = storage[np.str(this_s_id)]["lambda_s"]
-                lambda_s_W_s_sigma2_inv = storage[np.str(this_s_id)]["lambda_s_W_s_sigma2_inv"]
+                W_s_mus_s = storage[str(this_s_id)]["W_s_mus_s"]
+                lambda_s = storage[str(this_s_id)]["lambda_s"]
+                lambda_s_W_s_sigma2_inv = storage[str(this_s_id)]["lambda_s_W_s_sigma2_inv"]
 
                 this_y_norm = this_y[this_x_infr] - W_s_mus_s  # is (D,)
 
