@@ -87,6 +87,14 @@ sssc_parser.add_argument(
     default=1.0,
 )
 
+sssc_parser.add_argument(
+    "--sigma2_type",
+    choices=["scalar", "diagonal", "full"],
+    help="Type of covariance matrix for observable distribution",
+    type=str,
+    default="scalar",
+)
+
 variational_parser = argparse.ArgumentParser(add_help=False)
 variational_parser.add_argument(
     "--Ksize",
@@ -146,6 +154,13 @@ experiment_parser.add_argument(
     type=int,
     help="Number of epochs to train",
     default=40,
+)
+
+experiment_parser.add_argument(
+    "--data_estimation",
+    action="store_true",
+    help="Whether to evaluate data estimator",
+    default=False,
 )
 
 

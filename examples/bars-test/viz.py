@@ -28,10 +28,11 @@ class Visualizer(object):
         memorize=("F",),
         positions={
             "datapoints": [0.0, 0.0, 0.15, 0.9],
-            "W_gen": [0.15, 0.0, 0.15, 0.9],
+            "W_gen": [0.25, 0.0, 0.15, 0.9],
             "W": [0.0, 0.0, 0.25, 0.9],
             "F": [0.3, 0.0, 0.7, 1.0],
         },
+        will_receive_data_reconstructions=False,
         gif_framerate=None,
     ):
         self._output_directory = output_directory
@@ -43,6 +44,8 @@ class Visualizer(object):
         self._L_gen = L_gen
         self._labelsize = 10
         self._legendfontsize = 8
+        self._will_receive_data_reconstructions = will_receive_data_reconstructions
+        assert "reco" in positions if will_receive_data_reconstructions else True
 
         self._memory = {k: [] for k in memorize}
         self._fig = plt.figure()
@@ -77,6 +80,31 @@ class Visualizer(object):
         self._handles["datapoints"].set_cmap(cmap)
         self._handles["datapoints"].set_clim(vmin=vmin, vmax=vmax)
         ax.set_title(r"$\vec{y}^{\,(n)}$")
+
+    def _viz_reco_datapoints(self, epoch, reco):
+        assert "reco" in self._axes
+        ax = self._axes["reco"]
+        N, D = reco.shape
+        grid, cmap, vmin, vmax, scale_suff = make_grid_with_black_boxes_and_white_background(
+            images=reco.copy().reshape(N, 1, int(np.sqrt(D)), int(np.sqrt(D))),
+            nrow=int(np.ceil(N / 16)),
+            surrounding=4,
+            padding=8,
+            repeat=20,
+            global_clim=True,
+            sym_clim=True,
+            cmap=self._cmap_weights,
+            eps=0.02,
+        )
+
+        if self._handles["reco"] is None:
+            self._handles["reco"] = ax.imshow(np.squeeze(grid), interpolation="none")
+            ax.axis("off")
+        else:
+            self._handles["reco"].set_data(np.squeeze(grid))
+        self._handles["reco"].set_cmap(cmap)
+        self._handles["reco"].set_clim(vmin=vmin, vmax=vmax)
+        ax.set_title(r"$\vec{y}_{est}^{\,(n)}$ @" + " {}".format(epoch))
 
     def _viz_gen_weights(self):
         assert "W_gen" in self._axes
@@ -168,17 +196,19 @@ class Visualizer(object):
                 self._handles["L_gen"].set_ydata(ydata_gen)
 
         if add_legend:
-            ax.legend(prop={"size": self._legendfontsize}, ncol=2)
+            ax.legend(prop={"size": self._legendfontsize}, ncol=1)
 
-    def _viz_epoch(self, epoch, F, theta):
+    def _viz_epoch(self, epoch, F, theta, reco=None):
         self._viz_weights(epoch, theta["W"])
         self._viz_free_energy()
+        if reco is not None:
+            self._viz_reco_datapoints(epoch, reco)
 
-    def process_epoch(self, epoch, F, theta):
+    def process_epoch(self, epoch, F, theta, reco=None):
         memory = self._memory
         [memory[k].append(merge_dict(theta, {"F": F})[k]) for k in memory.keys()]
         if epoch % self._viz_every == 0:
-            self._viz_epoch(epoch, F, theta)
+            self._viz_epoch(epoch, F, theta, reco)
             self._save_epoch(epoch)
 
     def _save_epoch(self, epoch):
@@ -234,17 +264,29 @@ class Visualizer(object):
 
 class BSCVisualizer(Visualizer):
     def __init__(self, **kwargs):
-        super(BSCVisualizer, self).__init__(
-            memorize=("F", "pi", "sigma"),
-            positions={
+        positions = (
+            {
+                "datapoints": [0.0, 0.0, 0.07, 0.94],
+                "reco": [0.09, 0.0, 0.07, 0.94],
+                "W_gen": [0.18, 0.0, 0.1, 0.94],
+                "W": [0.28, 0.0, 0.1, 0.94],
+                "F": [0.45, 0.76, 0.53, 0.23],
+                "sigma": [0.45, 0.43, 0.53, 0.23],
+                "pi": [0.45, 0.1, 0.53, 0.23],
+            }
+            if kwargs["will_receive_data_reconstructions"]
+            else {
                 "datapoints": [0.0, 0.0, 0.07, 0.94],
                 "W_gen": [0.08, 0.0, 0.1, 0.94],
                 "W": [0.2, 0.0, 0.1, 0.94],
                 "F": [0.4, 0.76, 0.58, 0.23],
                 "sigma": [0.4, 0.43, 0.58, 0.23],
                 "pi": [0.4, 0.1, 0.58, 0.23],
-            },
-            **kwargs
+            }
+        )
+
+        super(BSCVisualizer, self).__init__(
+            memorize=("F", "pi", "sigma"), positions=positions, **kwargs
         )
 
     def _viz_sigma2(self):
@@ -284,7 +326,7 @@ class BSCVisualizer(Visualizer):
             self._handles["sigma_gen"].set_ydata(ydata_gen)
 
         if add_legend:
-            ax.legend(prop={"size": self._legendfontsize}, ncol=2)
+            ax.legend(prop={"size": self._legendfontsize}, ncol=1)
 
     def _viz_pi(self):
         memory = self._memory
@@ -323,37 +365,65 @@ class BSCVisualizer(Visualizer):
             self._handles["pi_gen"].set_ydata(ydata_gen)
 
         if add_legend:
-            ax.legend(prop={"size": self._legendfontsize}, ncol=2)
+            ax.legend(prop={"size": self._legendfontsize}, ncol=1)
 
-    def _viz_epoch(self, epoch, F, theta):
-        super(BSCVisualizer, self)._viz_epoch(epoch, F, theta)
+    def _viz_epoch(self, epoch, F, theta, reco=None):
+        super(BSCVisualizer, self)._viz_epoch(epoch, F, theta, reco)
         self._viz_sigma2()
         self._viz_pi()
 
 
 class SSSCVisualizer(Visualizer):
-    def __init__(self, sort_acc_to_desc_priors=False, **kwargs):
-        super(SSSCVisualizer, self).__init__(
-            memorize=("F", "sigma2"),
-            positions={
+    def __init__(self, sigma2_type, sort_acc_to_desc_priors=False, **kwargs):
+        _sigma2_positions = (
+            {"sigma2": [0.79, 0.68, 0.18, 0.28]}
+            if sigma2_type in ["scalar", "diagonal"]
+            else {"sigma2": [0.78, 0.53, 0.18, 0.16], "sigma2_gen": [0.78, 0.79, 0.18, 0.16]}
+        )
+        positions = (
+            {
+                "datapoints": [0.0, 0.0, 0.07, 0.94],
+                "reco": [0.085, 0.0, 0.07, 0.94],
+                "W_gen": [0.2, 0.0, 0.1, 0.94],
+                "W": [0.30, 0.0, 0.1, 0.94],
+                "F": [0.47, 0.76, 0.27, 0.23],
+                "pies": [0.47, 0.43, 0.27, 0.23],
+                "mus": [0.47, 0.1, 0.27, 0.23],
+                "Psi": [0.78, 0.01, 0.18, 0.16],
+                "Psi_gen": [0.78, 0.27, 0.18, 0.16],
+                **_sigma2_positions,
+            }
+            if "will_receive_data_reconstructions" in kwargs
+            else {
                 "datapoints": [0.0, 0.0, 0.07, 0.94],
                 "W_gen": [0.09, 0.0, 0.1, 0.94],
                 "W": [0.21, 0.0, 0.1, 0.94],
-                "F": [0.40, 0.76, 0.25, 0.23],
-                "sigma2": [0.40, 0.43, 0.25, 0.23],
-                "pies": [0.40, 0.1, 0.25, 0.23],
-                "mus": [0.74, 0.76, 0.25, 0.23],
-                "Psi": [0.74, 0.36, 0.25, 0.23],
-                "Psi_gen": [0.74, 0.04, 0.25, 0.23],
-            },
+                "F": [0.40, 0.76, 0.28, 0.23],
+                "pies": [0.40, 0.43, 0.28, 0.23],
+                "mus": [0.40, 0.1, 0.28, 0.23],
+                "Psi": [0.78, 0.01, 0.18, 0.16],
+                "Psi_gen": [0.78, 0.27, 0.18, 0.16],
+                **_sigma2_positions,
+            }
+        )
+        super(SSSCVisualizer, self).__init__(
+            memorize=["F", "sigma2"]
+            if sigma2_type in ["scalar", "diagonal"]
+            else [
+                "F",
+            ],
+            positions=positions,
             **kwargs
         )
+        self._sigma2_type = sigma2_type
         self._sort_acc_to_desc_priors = sort_acc_to_desc_priors
         if sort_acc_to_desc_priors:
             print("Sorting according to priors ascendingly")
         self._viz_Psi_gen()
+        if sigma2_type == "full":
+            self._viz_sigma2_gen_full()
 
-    def _viz_sigma2(self):
+    def _viz_sigma2_scalar(self):
         memory = self._memory
         assert "sigma2" in memory
         assert "sigma2" in self._axes
@@ -390,7 +460,78 @@ class SSSCVisualizer(Visualizer):
             self._handles["sigma2_gen"].set_ydata(ydata_gen)
 
         if add_legend:
-            ax.legend(prop={"size": self._legendfontsize}, ncol=2)
+            ax.legend(prop={"size": self._legendfontsize}, ncol=1)
+
+    def _viz_sigma2_diagonal(self, epoch, sigma2, inds_sort=None):
+        assert "sigma2" in self._axes
+        ax = self._axes["sigma2"]
+        xdata = np.arange(1, len(sigma2) + 1)
+        ydata_learned = sigma2[inds_sort] if inds_sort is not None else sigma2
+        if self._handles["sigma2"] is None:
+            (self._handles["sigma2"],) = ax.plot(
+                xdata,
+                ydata_learned,
+                "b",
+                linestyle="none",
+                marker=".",
+                markersize=4,
+                label=r"$\sigma2_d$ @ {}".format(epoch),
+            )
+            ax.set_xlabel(r"$h$", fontsize=self._labelsize)
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        else:
+            self._handles["sigma2"].set_xdata(xdata)
+            self._handles["sigma2"].set_ydata(ydata_learned)
+            self._handles["sigma2"].set_label(r"$\sigma2_d$ @ {}".format(epoch))
+            ax.relim()
+            ax.autoscale_view()
+
+        ydata_gen = (
+            self._theta_gen["sigma2"][inds_sort]
+            if inds_sort is not None
+            else self._theta_gen["sigma2"]
+        )
+        if self._handles["sigma2_gen"] is None:
+            (self._handles["sigma2_gen"],) = ax.plot(
+                xdata,
+                ydata_gen,
+                "b",
+                linestyle="none",
+                marker="o",
+                fillstyle=Line2D.fillStyles[-1],
+                markersize=4,
+                label=r"$\sigma^2_d^{\mathrm{gen}}$",
+            )
+        else:
+            self._handles["sigma2_gen"].set_xdata(xdata)
+            self._handles["sigma2_gen"].set_ydata(ydata_gen)
+
+        ax.legend(prop={"size": self._legendfontsize}, ncol=1)
+
+    def _viz_sigma2_full(self, epoch, sigma2):
+        assert "sigma2" in self._axes
+        ax = self._axes["sigma2"]
+        if self._handles["sigma2"] is None:
+            self._handles["sigma2"] = ax.imshow(sigma2)
+            ax.axis("off")
+        else:
+            self._handles["sigma2"].set_data(sigma2)
+        self._handles["sigma2"].set_cmap(plt.cm.jet)
+        max_abs = np.max(np.abs(sigma2))
+        self._handles["sigma2"].set_clim(vmin=-max_abs, vmax=max_abs)
+        ax.set_title(r"$\Sigma$ @ {}".format(epoch))
+
+    def _viz_sigma2_gen_full(self):
+        assert "sigma2_gen" in self._axes
+        ax = self._axes["sigma2_gen"]
+        assert "sigma2" in self._theta_gen
+        sigma2_gen = self._theta_gen["sigma2"]
+        self._handles["sigma2_gen"] = ax.imshow(sigma2_gen)
+        ax.axis("off")
+        self._handles["sigma2_gen"].set_cmap(plt.cm.jet)
+        max_abs = np.max(np.abs(sigma2_gen))
+        self._handles["sigma2_gen"].set_clim(vmin=-max_abs, vmax=max_abs)
+        ax.set_title(r"$\Sigma{\mathrm{gen}}$")
 
     def _viz_pies(self, epoch, pies, inds_sort=None):
         assert "pies" in self._axes
@@ -434,7 +575,7 @@ class SSSCVisualizer(Visualizer):
             self._handles["pies_gen"].set_xdata(xdata)
             self._handles["pies_gen"].set_ydata(ydata_gen)
 
-        ax.legend(prop={"size": self._legendfontsize}, ncol=2)
+        ax.legend(prop={"size": self._legendfontsize}, ncol=1)
 
     def _viz_mus(self, epoch, mus, inds_sort=None):
         assert "mus" in self._axes
@@ -478,7 +619,7 @@ class SSSCVisualizer(Visualizer):
             self._handles["mus_gen"].set_xdata(xdata)
             self._handles["mus_gen"].set_ydata(ydata_gen)
 
-        ax.legend(prop={"size": self._legendfontsize}, ncol=2)
+        ax.legend(prop={"size": self._legendfontsize}, ncol=1)
 
     def _viz_Psi(self, epoch, Psi):
         assert "Psi" in self._axes
@@ -504,11 +645,18 @@ class SSSCVisualizer(Visualizer):
         self._handles["Psi_gen"].set_clim(vmin=-max_abs, vmax=max_abs)
         ax.set_title(r"$\Psi^{\mathrm{gen}}$")
 
-    def _viz_epoch(self, epoch, F, theta):
+    def _viz_epoch(self, epoch, F, theta, reco=None):
         inds_sort = np.argsort(theta["pies"])[::-1] if self._sort_acc_to_desc_priors else None
         self._viz_free_energy()
-        self._viz_sigma2()
+        if self._sigma2_type == "scalar":
+            self._viz_sigma2_scalar()
+        elif self._sigma2_type == "diagonal":
+            self._viz_sigma2_diagonal(epoch, theta["sigma2"], inds_sort=inds_sort)
+        else:
+            self._viz_sigma2_full(epoch, theta["sigma2"])
         self._viz_weights(epoch, theta["W"], inds_sort=inds_sort)
         self._viz_pies(epoch, theta["pies"], inds_sort=inds_sort)
         self._viz_mus(epoch, theta["mus"], inds_sort=inds_sort)
         self._viz_Psi(epoch, theta["Psi"])
+        if reco is not None:
+            self._viz_reco_datapoints(epoch, reco)
