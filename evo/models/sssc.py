@@ -345,7 +345,7 @@ class SSSC(Model):
         model_params["piH"] = pies.sum()
         model_params["pil_bar"] = np.log(pies / (1.0 - pies))
 
-        sigma2_float128 = sigma2.astype("longdouble")
+        sigma2_float128 = np.float128(sigma2)
         try:
             model_params["sigma2_inv"] = (1.0 / sigma2_float128).astype(
                 dtype_precision
