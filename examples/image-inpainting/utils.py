@@ -43,12 +43,12 @@ class stdout_logger(object):
         pass
 
 
-def get_image(image_file, rescale=None):
+def get_image(image_file, rescale=1.0):
     """Read image from file, optionally rescale and return as numpy array
 
     :param image_file: Full path to image
     :type image_file: str
-    :param rescale: If provided, the image height and width will be rescaled
+    :param rescale: If unequal 1.0, the image height and width will be rescaled
                     by this factor
     :type rescale: float
     :return: Image array
@@ -61,7 +61,7 @@ def get_image(image_file, rescale=None):
     isrgb = np.ndim(img) == 3 and img.shape[2] == 3
     isgrey = np.ndim(img) == 2
     assert isrgb or isgrey, "Expect img image to be either RGB or grey"
-    if rescale is not None:
+    if rescale != 1.0:
         orig_shape = img.shape
         target_shape = [int(orig_shape[1] * rescale), int(orig_shape[0] * rescale)]
         img = (
