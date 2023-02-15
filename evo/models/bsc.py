@@ -152,7 +152,6 @@ class BSC(Model):
         N = comm.allreduce(my_N)
         H = self.H
         W = model_params["W"].T
-        pi = model_params["pi"]
         sigma = model_params["sigma"]
         lpj = my_suff_stat["lpj"]  # is (my_N x (S+H+1))
         ss = my_suff_stat["ss"]  # is (my_N x S x H)
@@ -170,6 +169,8 @@ class BSC(Model):
             parallel.pprint("no reset_lpj_smaller_eps_lpj = %i" % no_reset_lpj_smaller_eps_lpj)
         if no_reset_lpj_isinf > 0:
             parallel.pprint("no reset_lpj_isinf = %i" % no_reset_lpj_isinf)
+
+        Theta_new = model_params
 
         # Some data handling
         B = np.minimum(self.B_max - lpj.max(axis=1), self.B_max_shft)  # is: (my_N,)
@@ -247,6 +248,7 @@ class BSC(Model):
                     # Skip the update of parameter W but add some noise to it.
                     W_new = W + (eps_W * np.random.normal(0, 1, [H, D]))
                     parallel.pprint("Skipped W update. Added some noise to it.")
+            Theta_new["W"] = W_new.T
 
         # Calculate updated pi
         if "pi" in self.to_learn:
@@ -256,7 +258,8 @@ class BSC(Model):
             pies_new /= N
             if permanent["background"]:
                 pies_new[-1] = 1.0 - 1.1e-5
-            pi_new = pies_new.sum() / H
+            Theta_new["pi"] = pies_new.sum() / H
+            Theta_new["pies"] = pies_new  # \pi_h used only for evaluation, not for learning
 
         # Calculate updated sigma
         if "sigma" in self.to_learn:
@@ -269,17 +272,9 @@ class BSC(Model):
                 )
             else:
                 sigma_new = np.sqrt(comm.allreduce(my_sigma) / N / D)
+            Theta_new["sigma"] = sigma_new
 
-        Theta_old = {"W": W.T, "pi": pi, "sigma": sigma}
-        Theta_new = {"W": W_new.T, "pi": pi_new, "sigma": sigma_new}
-
-        to_return = {
-            "{}".format(k): Theta_new[k] if k in self.to_learn else Theta_old[k]
-            for k in Theta_old.keys()
-        }
-        to_return["pies"] = pies_new  # \pi_h used only for evaluation, not for learning
-
-        return to_return
+        return Theta_new
 
     def modelmean(self, model_params, this_data, this_suff_stat):
         W = model_params["W"].T
