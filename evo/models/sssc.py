@@ -84,9 +84,7 @@ class SSSC(Model):
         sigma = np.sqrt(model_params["sigma2"]) * np.ones(D)
 
         for n in range(my_N):
-
             if np.sum(s[n]) > 0:
-
                 Ws = np.matrix(model_params["W"][:, s[n]])
 
                 z_n = np.random.multivariate_normal(
@@ -210,7 +208,6 @@ class SSSC(Model):
         model_params = Model.check_params(self, model_params)
 
         if comm.rank == 0:
-
             assert np.isfinite(model_params["W"]).all()
 
             assert np.isfinite(model_params["mus"]).all()
@@ -276,7 +273,6 @@ class SSSC(Model):
                 C_inv = storage[np.str(this_s_id)]["C_inv"]
                 storage["counts"] += 1
             else:
-
                 W_s = W[this_x_infr, :][:, state]  # is (D_obs, |state|)
                 Psi_s = Psi[state, :][:, state]  # is (|state|, |state|)
                 try:
@@ -410,7 +406,6 @@ class SSSC(Model):
 
     @tracing.traced
     def step(self, model_params, my_suff_stat, my_data, do_reconstruction=False):
-
         # Sanity check model parameters
         model_params = self.check_params(model_params)
 
@@ -477,13 +472,14 @@ class SSSC(Model):
         ljc = model_params["ljc"]
         W = model_params["W"]
         sigma2 = model_params["sigma2"]
-        pies = model_params["pies"]
         mus = model_params["mus"]
         Psi = model_params["Psi"]
         storage = my_suff_stat["storage"]
 
         my_S_nunique = 0.0
         my_S_sub = 0.0
+
+        Theta_new = model_params
 
         my_sum_xpt_s = np.zeros([H], dtype=dtype_precision)
         my_sum_xpt_ss = np.zeros([H, H], dtype=dtype_precision)
@@ -512,7 +508,6 @@ class SSSC(Model):
 
         tracing.tracepoint("EM_step:iterating")
         for n in range(my_N):
-
             # Array handling
             this_y = my_y[n]
             this_x_infr = my_x_infr[n]
@@ -711,8 +706,7 @@ class SSSC(Model):
                     # Skip the update of parameter W but add some noise to it.
                     W_new = W + (eps_W * np.random.normal(0, 1, [D, H]))
                     parallel.pprint("Skipped W update. Added some noise to it.")
-        else:
-            W_new = None
+            Theta_new["W"] = W_new
 
         # Calculate updated pi
         if "pies" in self.to_learn:
@@ -724,29 +718,27 @@ class SSSC(Model):
             if permanent["background"]:
                 pies_new[H - 1] = 1.0 - 1.1e-5
 
-        else:
-            pies_new = None
+            Theta_new["pies"] = pies_new
 
         # Calculate updated mus
         if "mus" in self.to_learn:
             tracing.tracepoint("M_step:update mus")
             mus_new = sum_xpt_sz * 1.0 / (sum_xpt_s + eps_mus)
-        else:
-            mus_new = None
+            Theta_new["mus"] = mus_new
 
         # Calculate updated Psi
         if "Psi" in self.to_learn:
             tracing.tracepoint("M_step:update Psi")
             Psi = np.zeros((H, H))
-            mus_outer = np.outer(mus_new, mus_new)
+            mus_outer = np.outer(Theta_new["mus"], Theta_new["mus"])
             Psi += mus_outer * sum_xpt_ss
             Psi += sum_xpt_szsz
-            Psi -= 2 * mus_new[:, None] * sum_xpt_s_sz_outer
+            Psi -= 2 * Theta_new["mus"][:, None] * sum_xpt_s_sz_outer
 
             Psi_new = Psi * np.linalg.inv(sum_xpt_ss + eps_Psi * np.eye(self.H))
             +(eps_Psi * np.eye(self.H))
-        else:
-            Psi_new = None
+
+            Theta_new["Psi"] = Psi_new
 
         # Calculate updated sigma
         if "sigma2" in self.to_learn:
@@ -755,7 +747,6 @@ class SSSC(Model):
             sigma2_new = 0.0
 
             if incmpl_data:
-
                 my_y_inner = (my_y[my_x_infr] ** 2).sum()
 
                 sigma2_new += comm.allreduce(my_y_inner) - np.trace(sum_W_xpt_sz_sz_W)
@@ -765,7 +756,7 @@ class SSSC(Model):
                 sigma2_new = ((sigma2_new + correction) / N / D) + eps_sigma2
 
             else:
-                WT_outer = np.dot(W_new.T, W_new)
+                WT_outer = np.dot(Theta_new["W"].T, Theta_new["W"])
 
                 my_y_outer_diag = (my_y**2).sum(axis=0)
                 y_outer_diag = np.empty((D,))
@@ -775,8 +766,8 @@ class SSSC(Model):
                 sigma2_new -= np.trace(np.dot(sum_xpt_sz_sz_outer, WT_outer))
 
                 sigma2_new = (sigma2_new / N / D) + eps_sigma2
-        else:
-            sigma2_new = None
+
+            Theta_new["sigma2"] = sigma2_new
 
         # Sampler evaluation
         S_nunique = comm.allreduce(my_S_nunique) / N
@@ -819,25 +810,4 @@ class SSSC(Model):
         if no_Psi_s_pinv > 0:
             parallel.pprint("no Psi_s_pinv = %i" % no_Psi_s_pinv)
 
-        # Pass new parameters
-        Theta_old = {
-            "W": W,
-            "sigma2": sigma2,
-            "pies": pies,
-            "Psi": Psi,
-            "mus": mus,
-        }
-        Theta_new = {
-            "W": W_new,
-            "sigma2": sigma2_new,
-            "pies": pies_new,
-            "Psi": Psi_new,
-            "mus": mus_new,
-        }
-
-        Theta_updated = {
-            "{}".format(k): Theta_new[k] if k in self.to_learn else Theta_old[k]
-            for k in Theta_old.keys()
-        }
-
-        return F, S_nunique, S_sub, Theta_updated
+        return F, S_nunique, S_sub, Theta_new

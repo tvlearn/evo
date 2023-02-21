@@ -194,7 +194,11 @@ class Model:
             self.reconstruct(my_data, my_suff_stat, model_params)
 
         # Do M-step and use joint-probabilities to derive new parameter set
-        new_model_params = self.M_step(model_params, my_suff_stat, my_data)
+        new_model_params = (
+            self.M_step(model_params, my_suff_stat, my_data)
+            if len(self.to_learn) > 0
+            else model_params
+        )
 
         return F, S_nunique, S_sub, new_model_params
 
@@ -402,7 +406,6 @@ class Model:
 
         # Iterate over datapoints
         for n in range(my_N):
-
             this_y = my_y[n]
             this_x_infr = my_x_infr[n]
             this_states = ss[n]  # is (S, H)
@@ -492,7 +495,6 @@ class Model:
 
         tracing.tracepoint("E_step:iterating")
         for n in range(my_N):
-
             # Array handling
             this_y = my_y[n]
             this_x_infr = my_x_infr[n]
@@ -642,7 +644,6 @@ class Model:
         my_y = my_data["y_reconstructed"]
 
         for n in range(my_N):
-
             this_x_infr = my_x_infr[n, :]  # is (D,)
             if np.logical_not(this_x_infr).all():
                 continue
