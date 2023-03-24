@@ -237,14 +237,14 @@ class AutoTable:
         type_map = {
             np.dtype(np.float64): tables.Float64Atom(),
             np.dtype(np.float32): tables.Float32Atom(),
-            np.dtype(np.int): tables.Int64Atom(),
+            np.dtype(np.int64): tables.Int64Atom(),
             np.dtype(np.int8): tables.Int8Atom(),
             np.dtype(np.uint8): tables.UInt8Atom(),
             np.dtype(np.int16): tables.Int16Atom(),
             np.dtype(np.uint16): tables.UInt16Atom(),
             np.dtype(np.int32): tables.Int32Atom(),
             np.dtype(np.uint32): tables.UInt32Atom(),
-            np.dtype(np.bool): tables.BoolAtom(),
+            np.dtype(np.bool_): tables.BoolAtom(),
         }
 
         try:
@@ -278,14 +278,14 @@ class AutoTable:
         type_map = {
             np.dtype(np.float64): tables.Float64Atom(),
             np.dtype(np.float32): tables.Float32Atom(),
-            np.dtype(np.int): tables.Int64Atom(),
+            np.dtype(np.int64): tables.Int64Atom(),
             np.dtype(np.int8): tables.Int8Atom(),
             np.dtype(np.uint8): tables.UInt8Atom(),
             np.dtype(np.int16): tables.Int16Atom(),
             np.dtype(np.uint16): tables.UInt16Atom(),
             np.dtype(np.int32): tables.Int32Atom(),
             np.dtype(np.uint32): tables.UInt32Atom(),
-            np.dtype(np.bool): tables.BoolAtom(),
+            np.dtype(np.bool_): tables.BoolAtom(),
         }
 
         try:

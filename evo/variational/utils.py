@@ -112,7 +112,7 @@ def _init_lpj_and_state_arrays(N, S, H, p_init_Kn=None, permanent=None):
             ind_uniq = ind_uniq[ind_uniq >= S_perm]
             # if permanent["background"]:
             #     ind_uniq = ind_uniq[s_conc[ind_uniq,:][:,-1]==1]
-            this_s = s_conc[ind_uniq, :].astype(np.bool)
+            this_s = s_conc[ind_uniq, :].astype(np.bool_)
 
             while this_s.shape[0] < S:
                 this_p_ = np.random.random(size=(S, H_))
@@ -131,7 +131,7 @@ def _init_lpj_and_state_arrays(N, S, H, p_init_Kn=None, permanent=None):
                 ind_uniq = ind_uniq[ind_uniq >= (S_perm + this_s.shape[0])]
                 # if permanent["background"]:
                 #     ind_uniq = ind_uniq[s_conc[ind_uniq,:][:,-1]==1]
-                this_s_new = s_conc[ind_uniq, :].astype(np.bool)
+                this_s_new = s_conc[ind_uniq, :].astype(np.bool_)
 
                 this_s = np.concatenate((this_s, this_s_new), axis=0)
 
@@ -287,7 +287,7 @@ def vary_Kn(
     if unification:
 
         # Remove duplicate states
-        states_new = s_conc[ind_uniq_, :].astype(np.bool)
+        states_new = s_conc[ind_uniq_, :].astype(np.bool_)
         lpj_new = lpj_new[ind_uniq_ - (S_perm + S)]
 
         # Find highest joints for new states and lowest joints for old states

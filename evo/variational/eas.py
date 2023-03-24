@@ -263,7 +263,7 @@ def evolve_states(my_suff_stat, model_params, eval_lpj):
         this_end_ind_new_uniq = this_start_ind + this_n_new_uniq
         if this_n_new_uniq > 0:
             slice_ind_new_uniq = range(this_start_ind, this_end_ind_new_uniq)
-            new_states[slice_ind_new_uniq] = s_conc[ind_new_uniq, :].astype(np.bool)
+            new_states[slice_ind_new_uniq] = s_conc[ind_new_uniq, :].astype(np.bool_)
             new_lpj[slice_ind_new_uniq] = eval_lpj(new_states[slice_ind_new_uniq])
             new_and_unique[slice_ind_new_uniq] = True
 
