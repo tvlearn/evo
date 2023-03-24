@@ -11,7 +11,7 @@ import evo.utils.tracing as tracing
 from evo.models import Model
 
 
-class MCA(Model):
+class GaussianMCA(Model):
     def __init__(
         self,
         D,
