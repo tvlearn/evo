@@ -331,6 +331,231 @@ class BSCVisualizer(Visualizer):
         self._viz_pi()
 
 
+class MCAVisualizer(Visualizer):
+    def __init__(self, sigma2_type, sort_acc_to_desc_priors=False, **kwargs):
+        memorize = ("F", "sigma2") if sigma2_type == "scalar" else ("F",)
+        super(MCAVisualizer, self).__init__(
+            memorize=memorize,
+            positions={
+                "datapoints": [0.0, 0.0, 0.07, 0.94],
+                "W_gen": [0.08, 0.0, 0.1, 0.94],
+                "W": [0.2, 0.0, 0.1, 0.94],
+                "F": [0.4, 0.76, 0.58, 0.23],
+                "sigma2": [0.4, 0.43, 0.58, 0.23],
+                "pies": [0.4, 0.1, 0.58, 0.23],
+            }
+            if sigma2_type != "dictionary"
+            else {
+                "datapoints": [0.0, 0.0, 0.07, 0.94],
+                "W_gen": [0.08, 0.0, 0.1, 0.94],
+                "W": [0.19, 0.0, 0.1, 0.94],
+                "sigma2_gen": [0.32, 0.0, 0.1, 0.94],
+                "sigma2": [0.43, 0.0, 0.1, 0.94],
+                "F": [0.65, 0.66, 0.33, 0.23],
+                "pies": [0.65, 0.2, 0.33, 0.23],
+            },
+            **kwargs
+        )
+        self._sigma2_type = sigma2_type
+        self._sort_acc_to_desc_priors = sort_acc_to_desc_priors
+        if sigma2_type == "dictionary":
+            self._viz_gen_variances_dictionary()
+
+    def _viz_gen_variances_dictionary(self):
+        assert "sigma2_gen" in self._axes
+        ax = self._axes["sigma2_gen"]
+        sigma2_gen = self._theta_gen["sigma2"]
+        D, H = sigma2_gen.shape
+        grid, cmap, vmin, vmax, scale_suff = make_grid_with_black_boxes_and_white_background(
+            images=sigma2_gen.copy().T.reshape(H, 1, int(np.sqrt(D)), int(np.sqrt(D))),
+            nrow=int(np.ceil(H / 16)),
+            surrounding=4,
+            padding=8,
+            repeat=20,
+            global_clim=True,
+            sym_clim=True,
+            cmap=self._cmap_weights,
+            eps=0.02,
+        )
+
+        if self._handles["sigma2_gen"] is None:
+            self._handles["sigma2_gen"] = ax.imshow(np.squeeze(grid), interpolation="none")
+            ax.axis("off")
+        else:
+            self._handles["sigma2_gen"].set_data(np.squeeze(grid))
+        self._handles["sigma2_gen"].set_cmap(cmap)
+        self._handles["sigma2_gen"].set_clim(vmin=vmin, vmax=vmax)
+        ax.set_title(r"$\Sigma^{\mathrm{gen}}$")
+
+    def _viz_sigma2_scalar(self):
+        memory = self._memory
+        assert "sigma2" in memory
+        assert "sigma2" in self._axes
+        ax = self._axes["sigma2"]
+        xdata = np.arange(1, len(memory["sigma2"]) + 1)
+        ydata_learned = np.squeeze(np.array(memory["sigma2"]))
+        if self._handles["sigma2"] is None:
+            (self._handles["sigma2"],) = ax.plot(
+                xdata,
+                ydata_learned,
+                "b",
+                label=r"$\sigma^2$",
+            )
+            ax.set_xlabel("Epoch", fontsize=self._labelsize)
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+            add_legend = True
+        else:
+            self._handles["sigma2"].set_xdata(xdata)
+            self._handles["sigma2"].set_ydata(ydata_learned)
+            ax.relim()
+            ax.autoscale_view()
+            add_legend = True
+
+        ydata_gen = self._theta_gen["sigma2"] * np.ones_like(ydata_learned)
+        if self._handles["sigma2_gen"] is None:
+            (self._handles["sigma2_gen"],) = ax.plot(
+                xdata,
+                ydata_gen,
+                "b--",
+                label=r"$(\sigma^{\mathrm{gen}})^2$",
+            )
+        else:
+            self._handles["sigma2_gen"].set_xdata(xdata)
+            self._handles["sigma2_gen"].set_ydata(ydata_gen)
+
+        if add_legend:
+            ax.legend(prop={"size": self._legendfontsize}, ncol=2)
+
+    def _viz_sigma2_diagonal(self, epoch, sigma2):
+        assert "pies" in self._axes
+        ax = self._axes["sigma2"]
+        xdata = np.arange(1, len(sigma2) + 1)
+        ydata_learned = sigma2
+        if self._handles["sigma2"] is None:
+            (self._handles["sigma2"],) = ax.plot(
+                xdata,
+                ydata_learned,
+                "b",
+                linestyle="none",
+                marker=".",
+                markersize=4,
+                label=r"$\sigma_d$ @ {}".format(epoch),
+            )
+            ax.set_xlabel(r"$d$", fontsize=self._labelsize)
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        else:
+            self._handles["sigma2"].set_xdata(xdata)
+            self._handles["sigma2"].set_ydata(ydata_learned)
+            self._handles["sigma2"].set_label(r"$\sigma_h^2$ @ {}".format(epoch))
+            ax.relim()
+            ax.autoscale_view()
+
+        ydata_gen = self._theta_gen["sigma2"]
+        if self._handles["sigma2_gen"] is None:
+            (self._handles["sigma2_gen"],) = ax.plot(
+                xdata,
+                ydata_gen,
+                "b",
+                linestyle="none",
+                marker="o",
+                fillstyle=Line2D.fillStyles[-1],
+                markersize=4,
+                label=r"$(\sigma_d^2){\mathrm{gen}}$",
+            )
+        else:
+            self._handles["sigma2_gen"].set_xdata(xdata)
+            self._handles["sigma2_gen"].set_ydata(ydata_gen)
+
+        ax.legend(prop={"size": self._legendfontsize}, ncol=2)
+
+    def _viz_sigma2_dictionary(self, epoch, sigma2, inds_sort=None):
+        assert "sigma2" in self._axes
+        ax = self._axes["sigma2"]
+        D, H = sigma2.shape
+        sigma2 = sigma2[:, inds_sort] if inds_sort is not None else sigma2.copy()
+        grid, cmap, vmin, vmax, scale_suff = make_grid_with_black_boxes_and_white_background(
+            images=sigma2.T.reshape(H, 1, int(np.sqrt(D)), int(np.sqrt(D))),
+            nrow=int(np.ceil(H / 16)),
+            surrounding=4,
+            padding=8,
+            repeat=20,
+            global_clim=True,
+            sym_clim=True,
+            cmap=self._cmap_weights,
+            eps=0.02,
+        )
+
+        if self._handles["sigma2"] is None:
+            self._handles["sigma2"] = ax.imshow(np.squeeze(grid), interpolation="none")
+            ax.axis("off")
+        else:
+            self._handles["sigma2"].set_data(np.squeeze(grid))
+        self._handles["sigma2"].set_cmap(cmap)
+        self._handles["sigma2"].set_clim(vmin=vmin, vmax=vmax)
+        ax.set_title(r"$\Sigma @ {}$".format(epoch))
+
+    def _viz_pies(self, epoch, pies, inds_sort=None):
+        assert "pies" in self._axes
+        ax = self._axes["pies"]
+        xdata = np.arange(1, len(pies) + 1)
+        ydata_learned = pies[inds_sort] if inds_sort is not None else pies
+        if self._handles["pies"] is None:
+            (self._handles["pies"],) = ax.plot(
+                xdata,
+                ydata_learned,
+                "b",
+                linestyle="none",
+                marker=".",
+                markersize=4,
+                label=r"$\pi_h$ @ {}".format(epoch),
+            )
+            ax.set_xlabel(r"$h$", fontsize=self._labelsize)
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        else:
+            self._handles["pies"].set_xdata(xdata)
+            self._handles["pies"].set_ydata(ydata_learned)
+            self._handles["pies"].set_label(r"$\pi_h$ @ {}".format(epoch))
+            ax.relim()
+            ax.autoscale_view()
+
+        ydata_gen = (
+            self._theta_gen["pies"][inds_sort] if inds_sort is not None else self._theta_gen["pies"]
+        )
+        if self._handles["pies_gen"] is None:
+            (self._handles["pies_gen"],) = ax.plot(
+                xdata,
+                ydata_gen,
+                "b",
+                linestyle="none",
+                marker="o",
+                fillstyle=Line2D.fillStyles[-1],
+                markersize=4,
+                label=r"$\pi_h^{\mathrm{gen}}$",
+            )
+        else:
+            self._handles["pies_gen"].set_xdata(xdata)
+            self._handles["pies_gen"].set_ydata(ydata_gen)
+
+        ax.legend(prop={"size": self._legendfontsize}, ncol=2)
+
+    def _viz_epoch(self, epoch, F, theta):
+        super(MCAVisualizer, self)._viz_epoch(epoch, F, theta)
+        inds_sort = np.argsort(theta["pies"])[::-1] if self._sort_acc_to_desc_priors else None
+
+        if self._sigma2_type == "scalar":
+            self._viz_sigma2_scalar()
+        elif self._sigma2_type == "diagonal":
+            self._viz_sigma2_diagonal(epoch, theta["sigma2"])
+        elif self._sigma2_type == "dictionary":
+            self._viz_sigma2_dictionary(epoch, theta["sigma2"], inds_sort=inds_sort)
+        
+        self._viz_pies(
+            epoch,
+            theta["pies"],
+            inds_sort=inds_sort,
+        )
+
+
 class SSSCVisualizer(Visualizer):
     def __init__(self, sort_acc_to_desc_priors=False, **kwargs):
         super(SSSCVisualizer, self).__init__(

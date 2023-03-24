@@ -179,6 +179,15 @@ def get_args():
         ],
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    algo_parsers.add_parser(
+        "emca",
+        help="Run experiment with EMCA",
+        parents=comm_parents
+        + [
+            bsc_parser,
+        ],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
     algo_parsers.add_parser(
         "es3c",
