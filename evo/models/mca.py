@@ -45,7 +45,7 @@ class MCA(Model):
         Sanity-check the given model parameters. Raises an exception if something
         is severely wrong.
         """
-        model_params = self.check_params(model_params)
+        model_params = Model.check_params(self, model_params)
         if self.magnitude:
             W, eps = model_params["W"], self.eps
             # Ensure |W| >= tol
@@ -89,7 +89,8 @@ class MCA(Model):
         return {"y": y, "s": s, "y_mean": y_mean}
 
     def standard_init(self, my_data, W_init=None, pi_init=None, sigma_init=None):
-        model_params = self.standard_init(my_data, W_init, pi_init, sigma_init)
+        model_params = Model.standard_init(self, my_data, W_init, pi_init, sigma_init)
+        model_params["sigma2"] = model_params.pop("sigma") ** 2
 
         comm = self.comm
         D, H = self.D, self.H
@@ -103,9 +104,9 @@ class MCA(Model):
         )
 
         if self.sigma2_type == "diagonal":
-            model_params["sigma"] *= np.ones(D)
+            model_params["sigma2"] *= np.ones(D)
         elif self.sigma2_type == "dictionary":
-            model_params["sigma"] *= np.ones((D, H))
+            model_params["sigma2"] *= np.ones((D, H))
 
         model_params = comm.bcast(model_params)
 
@@ -301,24 +302,26 @@ class MCA(Model):
             this_pies = (this_pjc[S_perm:].T * this_ss.T).sum(axis=1)
             my_pies += this_pies / this_pjc_sum
 
-            # pylib implementation of Adh term
-            t0 = np.dot(this_ss, Wrho)
-            Wlbar = np.log(np.abs(t0) + tiny) / rho
-            assert np.isfinite(Wlbar).all()
-            t = Wlbar[:, None, :] - Wl[None, :, :]
-            xpt_Adh = (
-                this_ss[:, :, None]
-                * np.exp(
-                    this_lpjc[S_perm:, None, None]
-                    - (rho - 1) * (np.maximum(t, 0.0) if self.magnitude else t)
-                )
-            ).sum(axis=0)
+            # straightforward implementation of Adh term
+            Adh = this_ss[:, :, None] * Wrho[None, :, :]  # is (S, H, D)
+            Adh *= 1.0 / (Adh.sum(axis=1)[:, None, :] + tiny)
+            xpt_Adh = (Adh * this_pjc[S_perm:][:, None, None]).sum(axis=0)
             assert np.isfinite(xpt_Adh).all()
 
-            # # straightforward implementation of Adh term
-            # Adh = this_ss[:, :, None] * Wrho[None, :, :]  # is (S, H, D)
-            # Adh *= 1.0 / (Adh.sum(axis=1)[:, None, :] + tiny)
-            # xpt_Adh = (Adh * this_pjc[S_perm:][:, None, None]).sum(axis=0)
+            # # implementation of Adh term adapted from
+            # # https://github.com/ml-uol/prosper/blob/master/prosper/em/camodels/mca_et.py::MCA_ET.M_step and
+            # # https://github.com/ml-uol/prosper/blob/master/prosper/em/camodels/mmca_et.py::MMCA_ET.M_step
+            # t0 = np.dot(this_ss, Wrho)
+            # Wlbar = np.log(np.abs(t0) + tiny) / rho
+            # assert np.isfinite(Wlbar).all()
+            # t = Wlbar[:, None, :] - Wl[None, :, :]
+            # xpt_Adh = (
+            #     this_ss[:, :, None]
+            #     * np.exp(
+            #         this_lpjc[S_perm:, None, None]
+            #         - (rho - 1) * (np.maximum(t, 0.0) if self.magnitude else t)
+            #     )
+            # ).sum(axis=0)
             # assert np.isfinite(xpt_Adh).all()
 
             this_Wp = xpt_Adh * this_y[None, :]
