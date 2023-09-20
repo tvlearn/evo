@@ -64,7 +64,7 @@ if __name__ == "__main__":
     assert args.H % 2 == 0
     D = int((args.H / 2) ** 2)
 
-    args.sigma2_type = "dictionary"
+    #args.sigma2_type = "dictionary"
     args.magnitude = True
 
     add_background_state = True if (args.algo == "emca" and args.sigma2_type == "dictionary") else False

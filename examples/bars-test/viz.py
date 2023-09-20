@@ -33,6 +33,7 @@ class Visualizer(object):
             "F": [0.3, 0.0, 0.7, 1.0],
         },
         gif_framerate=None,
+        sigma2_type=None,
     ):
         self._output_directory = output_directory
         self._viz_every = viz_every

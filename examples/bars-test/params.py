@@ -58,6 +58,14 @@ bsc_parser.add_argument(
     default=1.0,
 )
 
+bsc_parser.add_argument(
+    "--sigma2_type",
+    type=str,
+    help="Specifying the types of sigma as being scalar, vector or a matrix",
+    choices=["scalar", "diagoanl", "dictionary"],
+    default="scalar",
+)
+
 sssc_parser = argparse.ArgumentParser(add_help=False)
 sssc_parser.add_argument(
     "--pi_gen",
