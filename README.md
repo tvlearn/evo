@@ -52,4 +52,4 @@ $ pip3 install black[python2] pylama
 [1] Jakob Drefs, Enrico Guiraud, Jörg Lücke. Evolutionary Variational Optimization of Generative Models. _Journal of Machine Learning Research_ 23(21):1-51, 2022. [(online access)](https://www.jmlr.org/papers/v23/20-233.html)
 
 [2] Hamid Mousavi, Jakob Drefs, Florian Hirschberger, Jörg Lücke. Generic Unsupervised Optimization for a Latent Variable Model With Exponential Family Observables. _Journal of Machine Learning Research_ 24(285):1−59, 2023.
-[(online access)](https://jmlr.org/papers/v24/22-0359.html.)
+[(online access)](https://jmlr.org/papers/v24/22-0359.html)
