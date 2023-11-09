@@ -58,6 +58,14 @@ bsc_parser.add_argument(
     default=1.0,
 )
 
+bsc_parser.add_argument(
+    "--sigma2_type",
+    type=str,
+    help="Specifying the types of sigma as being scalar, vector or a matrix",
+    choices=["scalar", "diagoanl", "dictionary"],
+    default="scalar",
+)
+
 sssc_parser = argparse.ArgumentParser(add_help=False)
 sssc_parser.add_argument(
     "--pi_gen",
@@ -173,6 +181,15 @@ def get_args():
     algo_parsers.add_parser(
         "ebsc",
         help="Run experiment with EBSC",
+        parents=comm_parents
+        + [
+            bsc_parser,
+        ],
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    algo_parsers.add_parser(
+        "emca",
+        help="Run experiment with EMCA",
         parents=comm_parents
         + [
             bsc_parser,
